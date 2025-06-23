@@ -1,5 +1,6 @@
 import os
 
 DeepSeekConfig = {
-    'APIKey': os.getenv("SamClassroomDeepSeekAPIKey")
+    'api_key': os.getenv("SamClassroomDeepSeekAPIKey"),
+    'base_url': "https://api.deepseek.com"
 }
