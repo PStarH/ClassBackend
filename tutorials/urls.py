@@ -1,5 +1,5 @@
 from django.urls import path 
-from backend import views 
+from tutorials import views 
  
 urlpatterns = [ 
     path('api/tutorials/', views.tutorial_list, name='tutorial_list'),
