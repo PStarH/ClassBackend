@@ -1,0 +1,13 @@
+# 测试环境依赖
+-r base.txt
+
+# 测试工具
+pytest==7.4.0
+pytest-django==4.5.2
+pytest-cov==4.1.0
+pytest-mock==3.11.1
+factory-boy==3.3.0
+coverage==7.2.7
+
+# 测试数据库
+sqlite3
