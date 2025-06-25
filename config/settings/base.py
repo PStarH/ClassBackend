@@ -25,12 +25,14 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     'rest_framework',
+    'rest_framework.authtoken',
     'corsheaders',
     'drf_spectacular',
 ]
 
 LOCAL_APPS = [
     'core',
+    'apps.authentication',
     'apps.ai_services',
     'apps.learning_plans',
     'apps.courses',
@@ -155,6 +157,10 @@ CORS_ALLOW_CREDENTIALS = True
 DEEPSEEK_API_KEY = config('DEEPSEEK_API_KEY', default='')
 DEEPSEEK_BASE_URL = config('DEEPSEEK_BASE_URL', default='https://api.deepseek.com')
 DEEPSEEK_MODEL = config('DEEPSEEK_MODEL', default='deepseek-chat')
+
+# 邮件配置
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@example.com')
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # 开发环境默认使用控制台
 
 # 缓存配置
 CACHES = {

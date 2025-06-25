@@ -4,6 +4,7 @@ djangorestframework==3.14.0
 django-cors-headers==4.3.1
 psycopg2-binary==2.9.7
 python-decouple==3.8
+Pillow==10.0.0
 
 # API 文档
 drf-spectacular==0.26.5

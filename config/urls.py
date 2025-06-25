@@ -16,6 +16,9 @@ urlpatterns = [
     
     # API 路由
     path(f'api/{API_VERSION}/', include([
+        # 用户认证
+        path('auth/', include('apps.authentication.urls')),
+        
         # 核心功能
         path('tutorials/', include('tutorials.urls')),
         
