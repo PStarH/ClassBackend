@@ -10,7 +10,7 @@ from datetime import timedelta
 import re
 import secrets
 
-from .models import User, UserSession, UserSettings
+from .models import User, UserSettings
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -186,23 +186,11 @@ class PasswordChangeSerializer(serializers.Serializer):
         return user
 
 
-class UserSessionSerializer(serializers.ModelSerializer):
-    """用户会话序列化器"""
-    
-    class Meta:
-        model = UserSession
-        fields = ['session_id', 'created_at', 'last_activity', 'expires_at', 
-                 'is_active', 'user_agent', 'ip_address']
-        read_only_fields = ['session_id', 'created_at', 'last_activity']
-
 
 class LoginResponseSerializer(serializers.Serializer):
     """登录响应序列化器"""
     
     user = UserSerializer(read_only=True)
-    token = serializers.CharField(read_only=True)
-    session_id = serializers.UUIDField(read_only=True)
-    expires_at = serializers.DateTimeField(read_only=True)
 
 
 class UserSettingsSerializer(serializers.ModelSerializer):

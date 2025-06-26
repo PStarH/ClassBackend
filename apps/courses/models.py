@@ -46,6 +46,17 @@ class CourseContent(models.Model):
         verbose_name = '课程内容'
         verbose_name_plural = '课程内容'
         ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['created_at']),  # 按创建时间查询
+            models.Index(fields=['updated_at']),  # 按更新时间查询
+        ]
+        constraints = [
+            # 确保大纲和章节字段不为空对象
+            models.CheckConstraint(
+                check=~models.Q(outline__exact={}),
+                name='course_contents_outline_not_empty'
+            ),
+        ]
     
     def __str__(self):
         """返回课程内容的字符串表示"""
@@ -255,6 +266,40 @@ class CourseProgress(models.Model):
         # 确保用户对同一个课程内容只能有一个进度记录
         unique_together = ['user_uuid', 'content_id']
         ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['user_uuid', 'updated_at']),  # 用户查询自己的课程
+            models.Index(fields=['subject_name']),  # 按学科查询
+            models.Index(fields=['proficiency_level']),  # 按掌握程度分析
+            models.Index(fields=['difficulty']),  # 按难度分析
+            models.Index(fields=['created_at']),  # 按创建时间查询
+            models.Index(fields=['learning_hour_total']),  # 按学习时长分析
+        ]
+        constraints = [
+            # 确保学习时长非负
+            models.CheckConstraint(
+                check=models.Q(learning_hour_week__gte=0),
+                name='course_progress_weekly_hours_non_negative'
+            ),
+            models.CheckConstraint(
+                check=models.Q(learning_hour_total__gte=0),
+                name='course_progress_total_hours_non_negative'
+            ),
+            # 确保预计完成时长大于0（如果设置）
+            models.CheckConstraint(
+                check=models.Q(est_finish_hour__isnull=True) | models.Q(est_finish_hour__gt=0),
+                name='course_progress_est_finish_hour_positive'
+            ),
+            # 确保掌握程度在有效范围内
+            models.CheckConstraint(
+                check=models.Q(proficiency_level__gte=0, proficiency_level__lte=100),
+                name='course_progress_proficiency_range'
+            ),
+            # 确保难度等级在有效范围内
+            models.CheckConstraint(
+                check=models.Q(difficulty__gte=1, difficulty__lte=10),
+                name='course_progress_difficulty_range'
+            ),
+        ]
     
     def __str__(self):
         return f"{self.user_uuid.email} - {self.subject_name}"

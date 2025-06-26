@@ -2,12 +2,22 @@
 学习会话模型 - 仅保留核心的 StudySession 模型
 """
 from django.db import models
+from django.conf import settings
 from core.models.base import BaseModel
 from core.models.mixins import TimestampMixin
 
 
 class StudySession(BaseModel, TimestampMixin):
     """学习会话模型 - 符合数据库标准化要求的 study_sessions 表"""
+    
+    # 用户外键关联 - 必需字段，确保数据完整性
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='study_sessions',
+        verbose_name='用户',
+        help_text='学习会话所属用户'
+    )
     
     start_time = models.DateTimeField(verbose_name='开始时间')
     end_time = models.DateTimeField(null=True, blank=True, verbose_name='结束时间')
@@ -38,9 +48,30 @@ class StudySession(BaseModel, TimestampMixin):
         verbose_name_plural = '学习会话'
         ordering = ['-start_time']
         indexes = [
-            models.Index(fields=['is_active', 'start_time']),
-            models.Index(fields=['goal_id', 'start_time']),
-            models.Index(fields=['learning_plan_id', 'start_time']),
+            models.Index(fields=['user', 'start_time']),  # 用户查询学习记录
+            models.Index(fields=['user', 'is_active']),   # 查询用户活跃会话
+            models.Index(fields=['is_active', 'start_time']),  # 查询所有活跃会话
+            models.Index(fields=['goal_id', 'start_time']),    # 按目标查询
+            models.Index(fields=['learning_plan_id', 'start_time']),  # 按计划查询
+            models.Index(fields=['start_time']),  # 时间范围查询
+        ]
+        constraints = [
+            # 确保结束时间晚于开始时间
+            models.CheckConstraint(
+                check=models.Q(end_time__isnull=True) | models.Q(end_time__gt=models.F('start_time')),
+                name='study_sessions_end_time_after_start'
+            ),
+            # 确保效果评分在有效范围内
+            models.CheckConstraint(
+                check=models.Q(effectiveness_rating__isnull=True) | 
+                      models.Q(effectiveness_rating__gte=1, effectiveness_rating__lte=5),
+                name='study_sessions_effectiveness_rating_range'
+            ),
+            # 确保持续时间非负
+            models.CheckConstraint(
+                check=models.Q(duration_minutes__gte=0),
+                name='study_sessions_duration_non_negative'
+            ),
         ]
     
     def __str__(self):

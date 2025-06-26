@@ -20,9 +20,6 @@ urlpatterns = [
     # 密码管理
     path('password/change/', views.PasswordChangeView.as_view(), name='change-password'),
     
-    # 用户会话管理
-    path('sessions/', views.UserSessionsView.as_view(), name='user-sessions'),
-    
     # 用户统计信息
     path('stats/', views.UserStatsView.as_view(), name='user-stats'),
     

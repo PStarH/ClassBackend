@@ -109,57 +109,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.save(update_fields=['last_login'])
 
 
-class UserSession(models.Model):
-    """用户会话模型 - 用于管理用户登录会话"""
-    
-    session_id = models.UUIDField(
-        primary_key=True,
-        default=uuid.uuid4,
-        editable=False
-    )
-    
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='sessions'
-    )
-    
-    token = models.CharField(
-        max_length=255,
-        unique=True,
-        verbose_name='访问令牌'
-    )
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_activity = models.DateTimeField(auto_now=True)
-    expires_at = models.DateTimeField()
-    
-    is_active = models.BooleanField(default=True)
-    
-    # 设备信息
-    user_agent = models.TextField(blank=True)
-    ip_address = models.GenericIPAddressField(null=True, blank=True)
-    
-    class Meta:
-        db_table = 'user_sessions'
-        verbose_name = '用户会话'
-        verbose_name_plural = '用户会话'
-        ordering = ['-created_at']
-    
-    def __str__(self):
-        return f"{self.user.email} - {self.session_id}"
-    
-    @property
-    def is_expired(self):
-        """检查会话是否过期"""
-        return timezone.now() > self.expires_at
-    
-    def refresh_activity(self):
-        """刷新活动时间"""
-        self.last_activity = timezone.now()
-        self.save(update_fields=['last_activity'])
-
-
 class UserSettings(models.Model):
     """用户设置模型 - 存储用户的学习偏好和设置"""
     
@@ -284,6 +233,19 @@ class UserSettings(models.Model):
         db_table = 'user_settings'
         verbose_name = '用户设置'
         verbose_name_plural = '用户设置'
+        indexes = [
+            models.Index(fields=['updated_at']),  # 查询最近更新的设置
+            models.Index(fields=['preferred_pace']),  # 按学习节奏分析
+            models.Index(fields=['preferred_style']),  # 按学习风格分析
+            models.Index(fields=['education_level']),  # 按教育水平分析
+        ]
+        constraints = [
+            # 确保技能数组不超过合理数量
+            models.CheckConstraint(
+                check=models.Q(skills__len__lte=50),
+                name='user_settings_skills_max_count'
+            ),
+        ]
     
     def __str__(self):
         return f"{self.user_uuid.email} - 用户设置"

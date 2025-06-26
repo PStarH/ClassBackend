@@ -10,20 +10,19 @@ from rest_framework.views import APIView
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 
-from .models import User, UserSession, UserSettings
+from .models import User, UserSettings
 from .serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
     UserSerializer,
     UserUpdateSerializer,
     PasswordChangeSerializer,
-    UserSessionSerializer,
     LoginResponseSerializer,
     UserSettingsSerializer,
     UserSettingsCreateSerializer,
     UserSettingsUpdateSerializer
 )
-from .services import AuthenticationService, UserService
+from .services import AuthenticationService
 from .authentication import TokenAuthentication
 
 logger = logging.getLogger(__name__)
@@ -99,13 +98,9 @@ class UserLoginView(APIView):
             serializer.is_valid(raise_exception=True)
             
             user = serializer.validated_data['user']
-            session = AuthenticationService.create_session(user, request)
             
             response_data = {
-                'user': UserSerializer(user).data,
-                'token': session.token,
-                'session_id': session.session_id,
-                'expires_at': session.expires_at
+                'user': UserSerializer(user).data
             }
             
             return Response({
@@ -140,12 +135,6 @@ class UserLogoutView(APIView):
     def post(self, request):
         """用户登出"""
         try:
-            # 从认证中间件获取会话ID
-            session_id = getattr(request, 'session_id', None)
-            
-            if session_id:
-                AuthenticationService.invalidate_session(session_id)
-            
             return Response({
                 'success': True,
                 'message': '登出成功'
@@ -226,11 +215,7 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
             serializer = self.get_serializer(user, data=request.data)
             serializer.is_valid(raise_exception=True)
             
-            updated_user = UserService.update_user_info(
-                user,
-                username=serializer.validated_data.get('username'),
-                email=serializer.validated_data.get('email')
-            )
+            updated_user = serializer.save()
             
             response_serializer = UserSerializer(updated_user)
             return Response({
@@ -259,7 +244,7 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         """删除用户账户"""
         try:
             user = self.get_object()
-            UserService.deactivate_user(user)
+            AuthenticationService.deactivate_user(user)
             
             return Response({
                 'success': True,
@@ -299,7 +284,7 @@ class PasswordChangeView(APIView):
             )
             serializer.is_valid(raise_exception=True)
             
-            UserService.change_password(
+            AuthenticationService.change_password(
                 request.user,
                 serializer.validated_data['old_password'],
                 serializer.validated_data['new_password']
@@ -319,41 +304,7 @@ class PasswordChangeView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
-class UserSessionsView(APIView):
-    """用户会话管理视图"""
-    
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
-    
-    @extend_schema(
-        summary="获取用户会话列表",
-        description="获取当前用户的所有活跃会话",
-        responses={
-            200: OpenApiResponse(
-                response=UserSessionSerializer(many=True),
-                description="获取成功"
-            )
-        }
-    )
-    def get(self, request):
-        """获取用户会话列表"""
-        try:
-            sessions = AuthenticationService.get_user_active_sessions(request.user)
-            serializer = UserSessionSerializer(sessions, many=True)
-            
-            return Response({
-                'success': True,
-                'data': serializer.data,
-                'count': len(serializer.data)
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"获取用户会话失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '获取用户会话失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class UserStatsView(APIView):
@@ -372,7 +323,15 @@ class UserStatsView(APIView):
     def get(self, request):
         """获取用户统计信息"""
         try:
-            stats = UserService.get_user_stats(request.user)
+            # Simple user stats implementation
+            stats = {
+                'user_uuid': str(request.user.uuid),
+                'username': request.user.username,
+                'email': request.user.email,
+                'is_active': request.user.is_active,
+                'date_joined': request.user.date_joined,
+                'last_login': request.user.last_login
+            }
             
             return Response({
                 'success': True,
