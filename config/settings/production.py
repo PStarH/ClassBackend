@@ -57,7 +57,62 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
 # 缓存配置（生产环境使用 Redis）
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'BACKEND': 'django_redis.cache.RedisCache',
         'LOCATION': config('REDIS_URL'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 50,
+                'retry_on_timeout': True,
+                'socket_keepalive': True,
+                'socket_keepalive_options': {},
+                'health_check_interval': 30,
+                'socket_connect_timeout': 5,
+                'socket_timeout': 5,
+            },
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+            'IGNORE_EXCEPTIONS': True,
+            'MASTER_CACHE': config('REDIS_MASTER_CACHE', default='redis-master'),
+        },
+        'KEY_PREFIX': 'education_platform_prod',
+        'TIMEOUT': 300,
+        'VERSION': 1,
+    },
+    'sessions': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': config('REDIS_SESSIONS_URL', default=config('REDIS_URL')),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 30,
+                'retry_on_timeout': True,
+            },
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'IGNORE_EXCEPTIONS': True,
+        },
+        'KEY_PREFIX': 'sessions_prod',
+        'TIMEOUT': 86400,
+    },
+    'api_cache': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': config('REDIS_API_CACHE_URL', default=config('REDIS_URL')),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 40,
+                'retry_on_timeout': True,
+            },
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+            'IGNORE_EXCEPTIONS': True,
+        },
+        'KEY_PREFIX': 'api_prod',
+        'TIMEOUT': 600,
     }
 }
+
+# 生产环境 API 配置
+API_RATE_LIMIT = config('API_RATE_LIMIT', default=200, cast=int)
+API_RATE_LIMIT_PERIOD = config('API_RATE_LIMIT_PERIOD', default=60, cast=int)
+API_CACHE_TIMEOUT = config('API_CACHE_TIMEOUT', default=600, cast=int)

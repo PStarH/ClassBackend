@@ -1,192 +1,14 @@
 """
-学习计划模型
+学习会话模型 - 仅保留核心的 StudySession 模型
 """
 from django.db import models
-from django.contrib.auth.models import User
 from core.models.base import BaseModel
-from core.models.mixins import TimestampMixin, SoftDeleteMixin
-
-
-class LearningGoal(BaseModel, TimestampMixin):
-    """学习目标模型"""
-    
-    DIFFICULTY_CHOICES = [
-        ('beginner', '初级'),
-        ('intermediate', '中级'),
-        ('advanced', '高级'),
-    ]
-    
-    GOAL_TYPE_CHOICES = [
-        ('skill', '技能目标'),
-        ('knowledge', '知识目标'),
-        ('certification', '认证目标'),
-        ('project', '项目目标'),
-    ]
-    
-    title = models.CharField(max_length=200, verbose_name='目标标题')
-    description = models.TextField(verbose_name='目标描述')
-    goal_type = models.CharField(
-        max_length=20, 
-        choices=GOAL_TYPE_CHOICES,
-        default='skill',
-        verbose_name='目标类型'
-    )
-    difficulty = models.CharField(
-        max_length=20,
-        choices=DIFFICULTY_CHOICES,
-        default='beginner',
-        verbose_name='难度等级'
-    )
-    estimated_hours = models.PositiveIntegerField(
-        default=0,
-        verbose_name='预估学习时长(小时)'
-    )
-    
-    class Meta:
-        db_table = 'learning_goals'
-        verbose_name = '学习目标'
-        verbose_name_plural = '学习目标'
-        ordering = ['-created_at']
-    
-    def __str__(self):
-        return self.title
-
-
-class LearningPlan(BaseModel, TimestampMixin, SoftDeleteMixin):
-    """学习计划模型"""
-    
-    STATUS_CHOICES = [
-        ('draft', '草稿'),
-        ('active', '进行中'),
-        ('completed', '已完成'),
-        ('paused', '已暂停'),
-        ('cancelled', '已取消'),
-    ]
-    
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='learning_plans',
-        verbose_name='用户'
-    )
-    title = models.CharField(max_length=200, verbose_name='计划标题')
-    description = models.TextField(blank=True, verbose_name='计划描述')
-    goals = models.ManyToManyField(
-        LearningGoal,
-        through='LearningPlanGoal',
-        related_name='learning_plans',
-        verbose_name='学习目标'
-    )
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='draft',
-        verbose_name='状态'
-    )
-    start_date = models.DateField(null=True, blank=True, verbose_name='开始日期')
-    target_end_date = models.DateField(null=True, blank=True, verbose_name='目标结束日期')
-    actual_end_date = models.DateField(null=True, blank=True, verbose_name='实际结束日期')
-    total_estimated_hours = models.PositiveIntegerField(
-        default=0,
-        verbose_name='总预估时长(小时)'
-    )
-    ai_recommendations = models.JSONField(
-        default=dict,
-        blank=True,
-        verbose_name='AI推荐内容'
-    )
-    
-    class Meta:
-        db_table = 'learning_plans'
-        verbose_name = '学习计划'
-        verbose_name_plural = '学习计划'
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['user', 'status']),
-            models.Index(fields=['start_date']),
-        ]
-    
-    def __str__(self):
-        return f"{self.user.username} - {self.title}"
-    
-    @property
-    def progress_percentage(self):
-        """计算进度百分比"""
-        if not self.goals.exists():
-            return 0
-        
-        completed_goals = self.learningplangoal_set.filter(
-            status='completed'
-        ).count()
-        total_goals = self.goals.count()
-        
-        return round((completed_goals / total_goals) * 100, 2) if total_goals > 0 else 0
-
-
-class LearningPlanGoal(BaseModel, TimestampMixin):
-    """学习计划目标关联模型"""
-    
-    STATUS_CHOICES = [
-        ('not_started', '未开始'),
-        ('in_progress', '进行中'),
-        ('completed', '已完成'),
-        ('skipped', '已跳过'),
-    ]
-    
-    learning_plan = models.ForeignKey(
-        LearningPlan,
-        on_delete=models.CASCADE,
-        verbose_name='学习计划'
-    )
-    learning_goal = models.ForeignKey(
-        LearningGoal,
-        on_delete=models.CASCADE,
-        verbose_name='学习目标'
-    )
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default='not_started',
-        verbose_name='状态'
-    )
-    order = models.PositiveIntegerField(default=0, verbose_name='顺序')
-    actual_hours = models.PositiveIntegerField(
-        default=0,
-        verbose_name='实际学习时长(小时)'
-    )
-    completion_date = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name='完成时间'
-    )
-    notes = models.TextField(blank=True, verbose_name='学习笔记')
-    
-    class Meta:
-        db_table = 'learning_plan_goals'
-        verbose_name = '学习计划目标'
-        verbose_name_plural = '学习计划目标'
-        unique_together = ['learning_plan', 'learning_goal']
-        ordering = ['order', 'created_at']
-    
-    def __str__(self):
-        return f"{self.learning_plan.title} - {self.learning_goal.title}"
+from core.models.mixins import TimestampMixin
 
 
 class StudySession(BaseModel, TimestampMixin):
-    """学习会话模型"""
+    """学习会话模型 - 符合数据库标准化要求的 study_sessions 表"""
     
-    learning_plan = models.ForeignKey(
-        LearningPlan,
-        on_delete=models.CASCADE,
-        related_name='study_sessions',
-        verbose_name='学习计划'
-    )
-    goal = models.ForeignKey(
-        LearningGoal,
-        on_delete=models.CASCADE,
-        related_name='study_sessions',
-        verbose_name='学习目标'
-    )
     start_time = models.DateTimeField(verbose_name='开始时间')
     end_time = models.DateTimeField(null=True, blank=True, verbose_name='结束时间')
     duration_minutes = models.PositiveIntegerField(
@@ -197,9 +19,18 @@ class StudySession(BaseModel, TimestampMixin):
     effectiveness_rating = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
+        choices=[(1, '很差'), (2, '较差'), (3, '一般'), (4, '良好'), (5, '优秀')],
         verbose_name='学习效果评分(1-5)'
     )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name='当前是否在进行中'
+    )
     notes = models.TextField(blank=True, verbose_name='学习笔记')
+    
+    # 可选的外键关联，用于扩展功能（暂时保留为可空）
+    goal_id = models.UUIDField(null=True, blank=True, verbose_name='学习目标ID')
+    learning_plan_id = models.UUIDField(null=True, blank=True, verbose_name='学习计划ID')
     
     class Meta:
         db_table = 'study_sessions'
@@ -207,8 +38,51 @@ class StudySession(BaseModel, TimestampMixin):
         verbose_name_plural = '学习会话'
         ordering = ['-start_time']
         indexes = [
-            models.Index(fields=['learning_plan', 'start_time']),
+            models.Index(fields=['is_active', 'start_time']),
+            models.Index(fields=['goal_id', 'start_time']),
+            models.Index(fields=['learning_plan_id', 'start_time']),
         ]
     
     def __str__(self):
-        return f"{self.learning_plan.title} - {self.start_time.strftime('%Y-%m-%d %H:%M')}"
+        return f"学习会话 - {self.start_time.strftime('%Y-%m-%d %H:%M')}"
+    
+    def save(self, *args, **kwargs):
+        """重写保存方法，自动计算持续时间"""
+        if self.end_time and self.start_time:
+            duration = self.end_time - self.start_time
+            self.duration_minutes = int(duration.total_seconds() / 60)
+        super().save(*args, **kwargs)
+    
+    @property
+    def is_completed(self):
+        """判断学习会话是否已完成"""
+        return self.end_time is not None
+    
+    @property
+    def duration_display(self):
+        """友好显示学习时长"""
+        if self.duration_minutes == 0:
+            return "0分钟"
+        hours = self.duration_minutes // 60
+        minutes = self.duration_minutes % 60
+        if hours > 0:
+            return f"{hours}小时{minutes}分钟" if minutes > 0 else f"{hours}小时"
+        return f"{minutes}分钟"
+    
+    def complete_session(self, end_time=None, effectiveness_rating=None, notes=""):
+        """完成学习会话"""
+        from django.utils import timezone
+        
+        if not end_time:
+            end_time = timezone.now()
+        
+        self.end_time = end_time
+        self.is_active = False
+        
+        if effectiveness_rating:
+            self.effectiveness_rating = effectiveness_rating
+        if notes:
+            self.notes = notes
+            
+        self.save()
+        return self

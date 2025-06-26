@@ -1,30 +1,32 @@
 """
 用户认证视图
 """
+import logging
 from rest_framework import status, generics, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.contrib.auth.models import User
-from django.contrib.auth import login, logout
-from django.core.mail import send_mail
-from django.conf import settings
+from rest_framework.views import APIView
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiResponse
-from datetime import timedelta
-import random
-import string
 
+from .models import User, UserSession, UserSettings
 from .serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
     UserSerializer,
-    UserProfileSerializer,
-    EmailVerificationSerializer,
-    PasswordChangeSerializer
+    UserUpdateSerializer,
+    PasswordChangeSerializer,
+    UserSessionSerializer,
+    LoginResponseSerializer,
+    UserSettingsSerializer,
+    UserSettingsCreateSerializer,
+    UserSettingsUpdateSerializer
 )
-from .models import UserProfile, EmailVerification
+from .services import AuthenticationService, UserService
+from .authentication import TokenAuthentication
+
+logger = logging.getLogger(__name__)
 
 
 class UserRegistrationView(generics.CreateAPIView):
@@ -46,318 +48,593 @@ class UserRegistrationView(generics.CreateAPIView):
         }
     )
     def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        
-        if serializer.is_valid():
-            user = serializer.save()
+        """用户注册"""
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
             
-            # 创建认证令牌
-            token, created = Token.objects.get_or_create(user=user)
+            user = AuthenticationService.create_user(
+                email=serializer.validated_data['email'],
+                username=serializer.validated_data['username'],
+                password=serializer.validated_data['password']
+            )
             
-            # 返回用户信息和令牌
-            user_serializer = UserSerializer(user)
+            response_serializer = UserSerializer(user)
+            return Response({
+                'success': True,
+                'message': '注册成功',
+                'data': response_serializer.data
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"用户注册失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '注册失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserLoginView(APIView):
+    """用户登录视图"""
+    
+    permission_classes = [AllowAny]
+    
+    @extend_schema(
+        summary="用户登录",
+        description="通过邮箱和密码登录",
+        request=UserLoginSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=LoginResponseSerializer,
+                description="登录成功"
+            ),
+            401: OpenApiResponse(description="登录失败")
+        }
+    )
+    def post(self, request):
+        """用户登录"""
+        try:
+            serializer = UserLoginSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            user = serializer.validated_data['user']
+            session = AuthenticationService.create_session(user, request)
+            
+            response_data = {
+                'user': UserSerializer(user).data,
+                'token': session.token,
+                'session_id': session.session_id,
+                'expires_at': session.expires_at
+            }
             
             return Response({
-                'message': '注册成功',
-                'user': user_serializer.data,
-                'token': token.key
-            }, status=status.HTTP_201_CREATED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                'success': True,
+                'message': '登录成功',
+                'data': response_data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"用户登录失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '登录失败',
+                'error': str(e)
+            }, status=status.HTTP_401_UNAUTHORIZED)
 
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-@extend_schema(
-    summary="用户登录",
-    description="用户登录获取认证令牌",
-    request=UserLoginSerializer,
-    responses={
-        200: OpenApiResponse(
-            response=UserSerializer,
-            description="登录成功"
-        ),
-        401: OpenApiResponse(description="登录失败，凭据无效")
-    }
-)
-def login_view(request):
-    """用户登录"""
-    serializer = UserLoginSerializer(data=request.data)
+class UserLogoutView(APIView):
+    """用户登出视图"""
     
-    if serializer.is_valid():
-        user = serializer.validated_data['user']
-        
-        # 创建或获取认证令牌
-        token, created = Token.objects.get_or_create(user=user)
-        
-        # 更新最后登录时间
-        user.last_login = timezone.now()
-        user.save(update_fields=['last_login'])
-        
-        # 返回用户信息和令牌
-        user_serializer = UserSerializer(user)
-        
-        return Response({
-            'message': '登录成功',
-            'user': user_serializer.data,
-            'token': token.key
-        }, status=status.HTTP_200_OK)
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
     
-    return Response(serializer.errors, status=status.HTTP_401_UNAUTHORIZED)
+    @extend_schema(
+        summary="用户登出",
+        description="注销当前会话",
+        responses={
+            200: OpenApiResponse(description="登出成功"),
+            401: OpenApiResponse(description="未授权")
+        }
+    )
+    def post(self, request):
+        """用户登出"""
+        try:
+            # 从认证中间件获取会话ID
+            session_id = getattr(request, 'session_id', None)
+            
+            if session_id:
+                AuthenticationService.invalidate_session(session_id)
+            
+            return Response({
+                'success': True,
+                'message': '登出成功'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"用户登出失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '登出失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@extend_schema(
-    summary="用户退出",
-    description="用户退出登录，删除认证令牌",
-    responses={
-        200: OpenApiResponse(description="退出成功"),
-        401: OpenApiResponse(description="未认证")
-    }
-)
-def logout_view(request):
-    """用户退出"""
-    try:
-        # 删除用户的认证令牌
-        token = Token.objects.get(user=request.user)
-        token.delete()
-        
-        return Response({
-            'message': '退出成功'
-        }, status=status.HTTP_200_OK)
-    except Token.DoesNotExist:
-        return Response({
-            'message': '退出成功'
-        }, status=status.HTTP_200_OK)
-
-
-class UserProfileView(generics.RetrieveUpdateAPIView):
-    """用户资料视图"""
+class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """用户详情视图"""
     
     serializer_class = UserSerializer
+    authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
     
     def get_object(self):
+        """获取当前用户"""
         return self.request.user
     
+    def get_serializer_class(self):
+        """根据请求方法返回不同的序列化器"""
+        if self.request.method in ['PUT', 'PATCH']:
+            return UserUpdateSerializer
+        return UserSerializer
+    
     @extend_schema(
-        summary="获取用户资料",
-        description="获取当前用户的详细资料",
+        summary="获取用户信息",
+        description="获取当前登录用户的详细信息",
         responses={
             200: OpenApiResponse(
                 response=UserSerializer,
                 description="获取成功"
             ),
-            401: OpenApiResponse(description="未认证")
+            401: OpenApiResponse(description="未授权")
         }
     )
     def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
+        """获取用户信息"""
+        try:
+            user = self.get_object()
+            serializer = self.get_serializer(user)
+            
+            return Response({
+                'success': True,
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"获取用户信息失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '获取用户信息失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
     
     @extend_schema(
-        summary="更新用户资料",
+        summary="更新用户信息",
         description="更新当前用户的基本信息",
+        request=UserUpdateSerializer,
         responses={
             200: OpenApiResponse(
                 response=UserSerializer,
                 description="更新成功"
             ),
-            400: OpenApiResponse(description="更新失败，参数错误"),
-            401: OpenApiResponse(description="未认证")
+            400: OpenApiResponse(description="更新失败")
         }
     )
-    def patch(self, request, *args, **kwargs):
-        return super().patch(request, *args, **kwargs)
-
-
-class UserProfileDetailView(generics.RetrieveUpdateAPIView):
-    """用户详细资料视图"""
+    def put(self, request, *args, **kwargs):
+        """更新用户信息"""
+        try:
+            user = self.get_object()
+            serializer = self.get_serializer(user, data=request.data)
+            serializer.is_valid(raise_exception=True)
+            
+            updated_user = UserService.update_user_info(
+                user,
+                username=serializer.validated_data.get('username'),
+                email=serializer.validated_data.get('email')
+            )
+            
+            response_serializer = UserSerializer(updated_user)
+            return Response({
+                'success': True,
+                'message': '用户信息更新成功',
+                'data': response_serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"更新用户信息失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '更新用户信息失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
     
-    serializer_class = UserProfileSerializer
+    @extend_schema(
+        summary="删除用户账户",
+        description="停用当前用户账户",
+        responses={
+            200: OpenApiResponse(description="账户已停用"),
+            400: OpenApiResponse(description="操作失败")
+        }
+    )
+    def delete(self, request, *args, **kwargs):
+        """删除用户账户"""
+        try:
+            user = self.get_object()
+            UserService.deactivate_user(user)
+            
+            return Response({
+                'success': True,
+                'message': '账户已停用'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"停用用户账户失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '停用用户账户失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PasswordChangeView(APIView):
+    """密码修改视图"""
+    
+    authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
     
-    def get_object(self):
-        profile, created = UserProfile.objects.get_or_create(user=self.request.user)
-        return profile
-    
     @extend_schema(
-        summary="获取用户详细资料",
-        description="获取当前用户的详细资料设置",
+        summary="修改密码",
+        description="修改当前用户的登录密码",
+        request=PasswordChangeSerializer,
         responses={
-            200: OpenApiResponse(
-                response=UserProfileSerializer,
-                description="获取成功"
-            ),
-            401: OpenApiResponse(description="未认证")
+            200: OpenApiResponse(description="密码修改成功"),
+            400: OpenApiResponse(description="密码修改失败")
         }
     )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
+    def post(self, request):
+        """修改密码"""
+        try:
+            serializer = PasswordChangeSerializer(
+                data=request.data,
+                context={'request': request}
+            )
+            serializer.is_valid(raise_exception=True)
+            
+            UserService.change_password(
+                request.user,
+                serializer.validated_data['old_password'],
+                serializer.validated_data['new_password']
+            )
+            
+            return Response({
+                'success': True,
+                'message': '密码修改成功，请重新登录'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"密码修改失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '密码修改失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserSessionsView(APIView):
+    """用户会话管理视图"""
+    
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
     
     @extend_schema(
-        summary="更新用户详细资料",
-        description="更新当前用户的详细资料设置",
+        summary="获取用户会话列表",
+        description="获取当前用户的所有活跃会话",
         responses={
             200: OpenApiResponse(
-                response=UserProfileSerializer,
+                response=UserSessionSerializer(many=True),
+                description="获取成功"
+            )
+        }
+    )
+    def get(self, request):
+        """获取用户会话列表"""
+        try:
+            sessions = AuthenticationService.get_user_active_sessions(request.user)
+            serializer = UserSessionSerializer(sessions, many=True)
+            
+            return Response({
+                'success': True,
+                'data': serializer.data,
+                'count': len(serializer.data)
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"获取用户会话失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '获取用户会话失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserStatsView(APIView):
+    """用户统计信息视图"""
+    
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        summary="获取用户统计信息",
+        description="获取当前用户的统计数据",
+        responses={
+            200: OpenApiResponse(description="获取成功")
+        }
+    )
+    def get(self, request):
+        """获取用户统计信息"""
+        try:
+            stats = UserService.get_user_stats(request.user)
+            
+            return Response({
+                'success': True,
+                'data': stats
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"获取用户统计信息失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '获取用户统计信息失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserSettingsView(APIView):
+    """用户设置视图"""
+    
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        summary="获取用户设置",
+        description="获取当前用户的设置信息",
+        responses={
+            200: OpenApiResponse(
+                response=UserSettingsSerializer,
+                description="获取成功"
+            ),
+            404: OpenApiResponse(description="用户设置不存在")
+        }
+    )
+    def get(self, request):
+        """获取用户设置"""
+        try:
+            settings = UserSettings.objects.get(user_uuid=request.user)
+            serializer = UserSettingsSerializer(settings)
+            
+            return Response({
+                'success': True,
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except UserSettings.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': '用户设置不存在，请先创建用户设置'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"获取用户设置失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '获取用户设置失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    @extend_schema(
+        summary="创建用户设置",
+        description="为当前用户创建设置信息（注册后必填）",
+        request=UserSettingsCreateSerializer,
+        responses={
+            201: OpenApiResponse(
+                response=UserSettingsSerializer,
+                description="创建成功"
+            ),
+            400: OpenApiResponse(description="创建失败，参数错误"),
+            409: OpenApiResponse(description="用户设置已存在")
+        }
+    )
+    def post(self, request):
+        """创建用户设置"""
+        try:
+            # 检查用户是否已有设置
+            if UserSettings.objects.filter(user_uuid=request.user).exists():
+                return Response({
+                    'success': False,
+                    'message': '用户设置已存在，请使用PUT方法更新'
+                }, status=status.HTTP_409_CONFLICT)
+            
+            serializer = UserSettingsCreateSerializer(
+                data=request.data,
+                context={'request': request}
+            )
+            
+            if serializer.is_valid():
+                settings = serializer.save()
+                response_serializer = UserSettingsSerializer(settings)
+                
+                logger.info(f"用户 {request.user.email} 创建设置成功")
+                return Response({
+                    'success': True,
+                    'message': '用户设置创建成功',
+                    'data': response_serializer.data
+                }, status=status.HTTP_201_CREATED)
+            
+            return Response({
+                'success': False,
+                'message': '创建用户设置失败',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            logger.error(f"创建用户设置失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '创建用户设置失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    @extend_schema(
+        summary="更新用户设置",
+        description="更新当前用户的设置信息",
+        request=UserSettingsUpdateSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=UserSettingsSerializer,
                 description="更新成功"
             ),
             400: OpenApiResponse(description="更新失败，参数错误"),
-            401: OpenApiResponse(description="未认证")
+            404: OpenApiResponse(description="用户设置不存在")
         }
     )
-    def patch(self, request, *args, **kwargs):
-        return super().patch(request, *args, **kwargs)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-@extend_schema(
-    summary="修改密码",
-    description="修改当前用户的登录密码",
-    request=PasswordChangeSerializer,
-    responses={
-        200: OpenApiResponse(description="密码修改成功"),
-        400: OpenApiResponse(description="密码修改失败，参数错误"),
-        401: OpenApiResponse(description="未认证")
-    }
-)
-def change_password_view(request):
-    """修改密码"""
-    serializer = PasswordChangeSerializer(data=request.data)
-    
-    if serializer.is_valid():
-        user = request.user
-        
-        # 验证旧密码
-        if not user.check_password(serializer.validated_data['old_password']):
-            return Response({
-                'error': '当前密码错误'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # 设置新密码
-        user.set_password(serializer.validated_data['new_password'])
-        user.save()
-        
-        # 删除旧的认证令牌，强制重新登录
+    def put(self, request):
+        """更新用户设置"""
         try:
-            token = Token.objects.get(user=user)
-            token.delete()
-        except Token.DoesNotExist:
-            pass
-        
-        return Response({
-            'message': '密码修改成功，请重新登录'
-        }, status=status.HTTP_200_OK)
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-def generate_verification_code():
-    """生成6位随机验证码"""
-    return ''.join(random.choices(string.digits, k=6))
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-@extend_schema(
-    summary="发送邮箱验证码",
-    description="向指定邮箱发送验证码",
-    request=EmailVerificationSerializer,
-    responses={
-        200: OpenApiResponse(description="验证码发送成功"),
-        400: OpenApiResponse(description="发送失败，参数错误")
-    }
-)
-def send_verification_code(request):
-    """发送邮箱验证码"""
-    email = request.data.get('email')
-    
-    if not email:
-        return Response({
-            'error': '请提供邮箱地址'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # 检查邮箱是否已注册
-    if User.objects.filter(email=email).exists():
-        return Response({
-            'error': '该邮箱已被注册'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # 生成验证码
-    verification_code = generate_verification_code()
-    
-    # 创建验证记录
-    verification = EmailVerification.objects.create(
-        user=None,  # 注册时还没有用户对象
-        email=email,
-        verification_code=verification_code,
-        expires_at=timezone.now() + timedelta(minutes=10)  # 10分钟有效期
-    )
-    
-    # 发送邮件（开发环境会在控制台显示）
-    try:
-        send_mail(
-            subject='教育平台 - 邮箱验证码',
-            message=f'您的验证码是：{verification_code}，10分钟内有效。',
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
-            fail_silently=False,
-        )
-        
-        return Response({
-            'message': '验证码已发送到您的邮箱'
-        }, status=status.HTTP_200_OK)
-    
-    except Exception as e:
-        return Response({
-            'error': '验证码发送失败，请稍后重试'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-@extend_schema(
-    summary="验证邮箱验证码",
-    description="验证邮箱验证码是否正确",
-    responses={
-        200: OpenApiResponse(description="验证码正确"),
-        400: OpenApiResponse(description="验证码错误或已过期")
-    }
-)
-def verify_email_code(request):
-    """验证邮箱验证码"""
-    email = request.data.get('email')
-    verification_code = request.data.get('verification_code')
-    
-    if not email or not verification_code:
-        return Response({
-            'error': '请提供邮箱和验证码'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        verification = EmailVerification.objects.filter(
-            email=email,
-            verification_code=verification_code,
-            is_verified=False
-        ).latest('created_at')
-        
-        if verification.is_expired:
+            settings = UserSettings.objects.get(user_uuid=request.user)
+            serializer = UserSettingsUpdateSerializer(
+                settings,
+                data=request.data,
+                partial=True,
+                context={'request': request}
+            )
+            
+            if serializer.is_valid():
+                settings = serializer.save()
+                response_serializer = UserSettingsSerializer(settings)
+                
+                logger.info(f"用户 {request.user.email} 更新设置成功")
+                return Response({
+                    'success': True,
+                    'message': '用户设置更新成功',
+                    'data': response_serializer.data
+                }, status=status.HTTP_200_OK)
+            
             return Response({
-                'error': '验证码已过期'
+                'success': False,
+                'message': '更新用户设置失败',
+                'errors': serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # 标记为已验证
-        verification.is_verified = True
-        verification.verified_at = timezone.now()
-        verification.save()
-        
-        return Response({
-            'message': '邮箱验证成功'
-        }, status=status.HTTP_200_OK)
+            
+        except UserSettings.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': '用户设置不存在，请先创建用户设置'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"更新用户设置失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '更新用户设置失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserSettingsSkillsView(APIView):
+    """用户技能管理视图"""
     
-    except EmailVerification.DoesNotExist:
-        return Response({
-            'error': '验证码错误'
-        }, status=status.HTTP_400_BAD_REQUEST)
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    @extend_schema(
+        summary="添加用户技能",
+        description="为用户添加新技能",
+        request={'type': 'object', 'properties': {'skill': {'type': 'string'}}},
+        responses={
+            200: OpenApiResponse(description="添加成功"),
+            400: OpenApiResponse(description="添加失败")
+        }
+    )
+    def post(self, request):
+        """添加技能"""
+        try:
+            skill = request.data.get('skill', '').strip()
+            if not skill:
+                return Response({
+                    'success': False,
+                    'message': '技能名称不能为空'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            settings = UserSettings.objects.get(user_uuid=request.user)
+            
+            if skill in settings.skills:
+                return Response({
+                    'success': False,
+                    'message': '技能已存在'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            settings.add_skill(skill)
+            
+            return Response({
+                'success': True,
+                'message': '技能添加成功',
+                'data': {'skills': settings.skills}
+            }, status=status.HTTP_200_OK)
+            
+        except UserSettings.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': '用户设置不存在'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"添加技能失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '添加技能失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    @extend_schema(
+        summary="删除用户技能",
+        description="删除用户的指定技能",
+        request={'type': 'object', 'properties': {'skill': {'type': 'string'}}},
+        responses={
+            200: OpenApiResponse(description="删除成功"),
+            400: OpenApiResponse(description="删除失败")
+        }
+    )
+    def delete(self, request):
+        """删除技能"""
+        try:
+            skill = request.data.get('skill', '').strip()
+            if not skill:
+                return Response({
+                    'success': False,
+                    'message': '技能名称不能为空'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            settings = UserSettings.objects.get(user_uuid=request.user)
+            
+            if skill not in settings.skills:
+                return Response({
+                    'success': False,
+                    'message': '技能不存在'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            settings.remove_skill(skill)
+            
+            return Response({
+                'success': True,
+                'message': '技能删除成功',
+                'data': {'skills': settings.skills}
+            }, status=status.HTTP_200_OK)
+            
+        except UserSettings.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': '用户设置不存在'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"删除技能失败: {str(e)}")
+            return Response({
+                'success': False,
+                'message': '删除技能失败',
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)

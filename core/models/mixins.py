@@ -2,7 +2,7 @@
 模型混入类
 """
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 
 
 class TimestampMixin(models.Model):
@@ -40,7 +40,7 @@ class AuditMixin(models.Model):
     """审计混入"""
     
     created_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -48,7 +48,7 @@ class AuditMixin(models.Model):
     )
     
     updated_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

@@ -16,28 +16,18 @@ urlpatterns = [
     
     # API 路由
     path(f'api/{API_VERSION}/', include([
+        # 核心功能
+        path('', include('core.urls')),
+        
         # 用户认证
         path('auth/', include('apps.authentication.urls')),
         
-        # 核心功能
-        path('tutorials/', include('tutorials.urls')),
-        
-        # AI 服务
-        path('ai/', include('apps.ai_services.urls')),
-        
-        # 学习计划
+        # 学习计划 (包含学习记录)
         path('learning-plans/', include('apps.learning_plans.urls')),
         
         # 课程管理
         path('courses/', include('apps.courses.urls')),
-        
-        # 用户会话
-        path('sessions/', include('apps.user_sessions.urls')),
     ])),
-    
-    # LLM 服务 API (向后兼容)
-    path('api/advisor', include('llm.advisor.urls')),
-    path('api/teacher', include('llm.teacher.urls')),
     
     # 健康检查
     path('health/', TemplateView.as_view(template_name='health.html'), name='health_check'),

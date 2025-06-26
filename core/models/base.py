@@ -2,7 +2,7 @@
 基础模型类
 """
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 import uuid
 
 
@@ -43,7 +43,7 @@ class UserOwnedModel(BaseModel):
     """用户拥有的模型基类"""
     
     owner = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='%(class)s_set',
         help_text="拥有者"

@@ -11,17 +11,22 @@ urlpatterns = [
     path('register/', views.UserRegistrationView.as_view(), name='register'),
     
     # 用户登录/退出
-    path('login/', views.login_view, name='login'),
-    path('logout/', views.logout_view, name='logout'),
+    path('login/', views.UserLoginView.as_view(), name='login'),
+    path('logout/', views.UserLogoutView.as_view(), name='logout'),
     
-    # 用户资料
-    path('profile/', views.UserProfileView.as_view(), name='profile'),
-    path('profile/detail/', views.UserProfileDetailView.as_view(), name='profile-detail'),
+    # 用户信息管理 (GET, PUT, DELETE)
+    path('user/', views.UserDetailView.as_view(), name='user-detail'),
     
     # 密码管理
-    path('password/change/', views.change_password_view, name='change-password'),
+    path('password/change/', views.PasswordChangeView.as_view(), name='change-password'),
     
-    # 邮箱验证
-    path('email/send-code/', views.send_verification_code, name='send-verification-code'),
-    path('email/verify/', views.verify_email_code, name='verify-email'),
+    # 用户会话管理
+    path('sessions/', views.UserSessionsView.as_view(), name='user-sessions'),
+    
+    # 用户统计信息
+    path('stats/', views.UserStatsView.as_view(), name='user-stats'),
+    
+    # 用户设置管理
+    path('settings/', views.UserSettingsView.as_view(), name='user-settings'),
+    path('settings/skills/', views.UserSettingsSkillsView.as_view(), name='user-settings-skills'),
 ]

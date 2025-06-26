@@ -32,12 +32,9 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     'core',
-    'apps.authentication',
-    'apps.ai_services',
-    'apps.learning_plans',
-    'apps.courses',
-    'apps.user_sessions',
-    'tutorials',  # 保留原有的 tutorials 应用
+    'apps.authentication',  # 用户管理 (users, user_settings)
+    'apps.courses',         # 课程管理 (course_progress, course_content)
+    'apps.learning_plans',  # 学习记录 (study_sessions) - 已有实现
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -47,10 +44,13 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+    'core.middleware.HealthCheckMiddleware',  # 健康检查中间件
+    'core.middleware.RateLimitMiddleware',    # 速率限制中间件
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'core.middleware.CacheResponseMiddleware', # 响应缓存中间件
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
@@ -126,8 +126,8 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Django REST Framework 配置
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'apps.authentication.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.TokenAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -142,6 +142,7 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.FormParser',
         'rest_framework.parsers.MultiPartParser',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 # CORS 配置
@@ -162,17 +163,76 @@ DEEPSEEK_MODEL = config('DEEPSEEK_MODEL', default='deepseek-chat')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@example.com')
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # 开发环境默认使用控制台
 
-# 缓存配置
+# Redis 和缓存配置
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'BACKEND': 'django_redis.cache.RedisCache',
         'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 20,
+                'retry_on_timeout': True,
+                'socket_keepalive': True,
+                'socket_keepalive_options': {},
+                'health_check_interval': 30,
+            },
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+            'IGNORE_EXCEPTIONS': True,  # 防止 Redis 故障影响应用
+        },
+        'KEY_PREFIX': 'education_platform',
+        'TIMEOUT': 300,  # 5分钟默认超时
+        'VERSION': 1,
+    },
+    'sessions': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/2'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 10,
+                'retry_on_timeout': True,
+            },
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'IGNORE_EXCEPTIONS': True,
+        },
+        'KEY_PREFIX': 'sessions',
+        'TIMEOUT': 86400,  # 24小时
+    },
+    'api_cache': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/3'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 15,
+                'retry_on_timeout': True,
+            },
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
+            'IGNORE_EXCEPTIONS': True,
+        },
+        'KEY_PREFIX': 'api',
+        'TIMEOUT': 600,  # 10分钟
     }
 }
 
 # Session 配置
 SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
-SESSION_CACHE_ALIAS = 'default'
+SESSION_CACHE_ALIAS = 'sessions'
+SESSION_COOKIE_AGE = 86400  # 24小时
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+
+# API 配置
+API_RATE_LIMIT = config('API_RATE_LIMIT', default=100, cast=int)  # 每分钟请求数
+API_RATE_LIMIT_PERIOD = config('API_RATE_LIMIT_PERIOD', default=60, cast=int)  # 速率限制时间窗口
+API_CACHE_TIMEOUT = config('API_CACHE_TIMEOUT', default=300, cast=int)  # API 缓存超时时间
+
+# Redis 全局配置
+DJANGO_REDIS_IGNORE_EXCEPTIONS = True
+DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS = True
 
 # 日志配置
 LOGGING = {
@@ -212,3 +272,6 @@ LOGGING = {
         },
     },
 }
+
+# 自定义用户模型
+AUTH_USER_MODEL = 'authentication.User'
