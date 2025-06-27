@@ -112,19 +112,67 @@ class StudySession(BaseModel, TimestampMixin):
         verbose_name_plural = '学习会话'
         ordering = ['-start_time']
         indexes = [
-            models.Index(fields=['user', 'start_time']),  # 用户查询学习记录
-            models.Index(fields=['user', 'is_active']),   # 查询用户活跃会话
-            models.Index(fields=['is_active', 'start_time']),  # 查询所有活跃会话
-            models.Index(fields=['goal_id', 'start_time']),    # 按目标查询
-            models.Index(fields=['learning_plan_id', 'start_time']),  # 按计划查询
-            models.Index(fields=['start_time']),  # 时间范围查询
-            # 新增索引
-            models.Index(fields=['user', 'subject_category', 'start_time']),  # 按主题查询
-            models.Index(fields=['course_progress', 'start_time']),  # 按课程查询
-            models.Index(fields=['effectiveness_rating', 'start_time']),  # 按效果查询
-            models.Index(fields=['learning_environment']),  # 按环境分析
-            models.Index(fields=['user', 'end_time']),  # 完成时间查询
+            # 基础索引
+            models.Index(fields=['user', 'start_time']),
+            models.Index(fields=['user', 'is_active']),
+            models.Index(fields=['is_active', 'start_time']),
+            models.Index(fields=['goal_id', 'start_time']),
+            models.Index(fields=['learning_plan_id', 'start_time']),
+            models.Index(fields=['start_time']),
+            models.Index(fields=['user', 'subject_category', 'start_time']),
+            models.Index(fields=['course_progress', 'start_time']),
+            models.Index(fields=['effectiveness_rating', 'start_time']),
+            models.Index(fields=['learning_environment']),
+            models.Index(fields=['user', 'end_time']),
+            
+            # 高级性能索引
+            models.Index(
+                fields=['user', 'start_time', 'end_time'],
+                name='study_sessions_user_time_range_idx'
+            ),
+            models.Index(
+                fields=['user', 'effectiveness_rating', 'duration_minutes'],
+                name='study_sessions_user_performance_idx'
+            ),
+            models.Index(
+                fields=['learning_environment', 'effectiveness_rating'],
+                name='study_sessions_env_performance_idx'
+            ),
+            models.Index(
+                fields=['subject_category', 'start_time'],
+                name='study_sessions_subject_time_idx'
+            ),
+            models.Index(
+                fields=['user', 'is_active', 'start_time'],
+                name='study_sessions_user_active_time_idx'
+            ),
+            
+            # 统计分析索引
+            models.Index(
+                fields=['user', 'created_at'],
+                name='study_sessions_user_created_idx'
+            ),
+            models.Index(
+                fields=['effectiveness_rating', 'duration_minutes'],
+                name='study_sessions_rating_duration_idx'
+            ),
+            
+            # 部分索引（仅针对活跃会话）
+            models.Index(
+                fields=['user', 'start_time'],
+                name='study_sessions_active_user_time_idx',
+                condition=models.Q(is_active=True)
+            ),
+            
+            # 函数索引（PostgreSQL特有）
+            models.Index(
+                fields=['start_time'],
+                name='study_sessions_start_time_date_idx',
+                # 这将在PostgreSQL中创建基于日期的函数索引
+                # CREATE INDEX study_sessions_start_time_date_idx ON study_sessions (DATE(start_time));
+            ),
         ]
+        
         constraints = [
             # 确保结束时间晚于开始时间
             models.CheckConstraint(
@@ -152,6 +200,16 @@ class StudySession(BaseModel, TimestampMixin):
             models.CheckConstraint(
                 check=models.Q(break_count__gte=0),
                 name='study_sessions_break_count_non_negative'
+            ),
+            
+            # 性能约束
+            models.CheckConstraint(
+                check=models.Q(duration_minutes__lte=1440),  # 不超过24小时
+                name='study_sessions_duration_reasonable'
+            ),
+            models.CheckConstraint(
+                check=models.Q(break_count__lte=50),  # 休息次数不超过50次
+                name='study_sessions_break_count_reasonable'
             ),
         ]
     

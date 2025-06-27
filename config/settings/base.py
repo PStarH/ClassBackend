@@ -42,10 +42,12 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # 中间件配置
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'core.security.middleware.SecurityHeadersMiddleware',  # 安全头中间件
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'core.middleware.HealthCheckMiddleware',  # 健康检查中间件
     'core.middleware.RateLimitMiddleware',    # 速率限制中间件
+    'core.security.middleware.AuditLogMiddleware',  # 审计日志中间件
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -86,6 +88,13 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD', default=''),
         'HOST': config('DB_HOST', default='127.0.0.1'),
         'PORT': config('DB_PORT', default='5432'),
+        'OPTIONS': {
+            'sslmode': config('DB_SSL_MODE', default='prefer'),
+            'connect_timeout': 10,
+            'options': '-c default_transaction_isolation=serializable'
+        },
+        'CONN_MAX_AGE': 600,  # 连接池
+        'CONN_HEALTH_CHECKS': True,
     }
 }
 
@@ -96,12 +105,19 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+    # 自定义密码验证器
+    {
+        'NAME': 'core.security.validators.DataSecurityValidator.validate_password_strength',
     },
 ]
 
@@ -171,15 +187,17 @@ CACHES = {
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'CONNECTION_POOL_KWARGS': {
-                'max_connections': 20,
+                'max_connections': 50,
                 'retry_on_timeout': True,
                 'socket_keepalive': True,
                 'socket_keepalive_options': {},
                 'health_check_interval': 30,
+                'socket_connect_timeout': 5,
+                'socket_timeout': 5,
             },
             'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
             'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
-            'IGNORE_EXCEPTIONS': True,  # 防止 Redis 故障影响应用
+            'IGNORE_EXCEPTIONS': True,
         },
         'KEY_PREFIX': 'education_platform',
         'TIMEOUT': 300,  # 5分钟默认超时
@@ -191,14 +209,14 @@ CACHES = {
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'CONNECTION_POOL_KWARGS': {
-                'max_connections': 10,
+                'max_connections': 20,
                 'retry_on_timeout': True,
             },
             'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
             'IGNORE_EXCEPTIONS': True,
         },
         'KEY_PREFIX': 'sessions',
-        'TIMEOUT': 86400,  # 24小时
+        'TIMEOUT': 28800,  # 8小时
     },
     'api_cache': {
         'BACKEND': 'django_redis.cache.RedisCache',
@@ -206,7 +224,7 @@ CACHES = {
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'CONNECTION_POOL_KWARGS': {
-                'max_connections': 15,
+                'max_connections': 30,
                 'retry_on_timeout': True,
             },
             'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
@@ -215,19 +233,35 @@ CACHES = {
         },
         'KEY_PREFIX': 'api',
         'TIMEOUT': 600,  # 10分钟
+    },
+    'user_cache': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/4'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 15,
+                'retry_on_timeout': True,
+            },
+            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
+            'IGNORE_EXCEPTIONS': True,
+        },
+        'KEY_PREFIX': 'user',
+        'TIMEOUT': 1800,  # 30分钟
     }
 }
 
 # Session 配置
 SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
 SESSION_CACHE_ALIAS = 'sessions'
-SESSION_COOKIE_AGE = 86400  # 24小时
+SESSION_COOKIE_AGE = 28800  # 8小时
 SESSION_SAVE_EVERY_REQUEST = True
-SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 # API 配置
 API_RATE_LIMIT = config('API_RATE_LIMIT', default=100, cast=int)  # 每分钟请求数
 API_RATE_LIMIT_PERIOD = config('API_RATE_LIMIT_PERIOD', default=60, cast=int)  # 速率限制时间窗口
+API_BURST_RATE_LIMIT = config('API_BURST_RATE_LIMIT', default=20, cast=int)  # 突发限制
 API_CACHE_TIMEOUT = config('API_CACHE_TIMEOUT', default=300, cast=int)  # API 缓存超时时间
 
 # Redis 全局配置
@@ -247,12 +281,40 @@ LOGGING = {
             'format': '{levelname} {message}',
             'style': '{',
         },
+        'security': {
+            'format': '[SECURITY] {asctime} {levelname} {message}',
+            'style': '{',
+        },
     },
     'handlers': {
         'console': {
             'level': 'DEBUG',
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
+        },
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'django.log',
+            'maxBytes': 10*1024*1024,  # 10MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+        'security_file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'security.log',
+            'maxBytes': 10*1024*1024,
+            'backupCount': 10,
+            'formatter': 'security',
+        },
+        'performance_file': {
+            'level': 'WARNING',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'performance.log',
+            'maxBytes': 10*1024*1024,
+            'backupCount': 3,
+            'formatter': 'verbose',
         },
     },
     'root': {
@@ -261,17 +323,42 @@ LOGGING = {
     },
     'loggers': {
         'django': {
-            'handlers': ['console'],
+            'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': False,
         },
         'apps': {
-            'handlers': ['console'],
+            'handlers': ['console', 'file'],
             'level': 'DEBUG',
+            'propagate': False,
+        },
+        'security': {
+            'handlers': ['security_file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'performance': {
+            'handlers': ['performance_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['file'],
+            'level': 'WARNING',
             'propagate': False,
         },
     },
 }
+
+# 监控和性能配置
+ENABLE_PERFORMANCE_MONITORING = config('ENABLE_PERFORMANCE_MONITORING', default=True, cast=bool)
+SLOW_QUERY_THRESHOLD = config('SLOW_QUERY_THRESHOLD', default=1.0, cast=float)
+CACHE_ANALYTICS_ENABLED = config('CACHE_ANALYTICS_ENABLED', default=True, cast=bool)
+
+# 数据保护配置
+DATA_ENCRYPTION_ENABLED = config('DATA_ENCRYPTION_ENABLED', default=False, cast=bool)
+SENSITIVE_DATA_MASKING = config('SENSITIVE_DATA_MASKING', default=True, cast=bool)
+AUDIT_LOG_ENABLED = config('AUDIT_LOG_ENABLED', default=True, cast=bool)
 
 # 自定义用户模型
 AUTH_USER_MODEL = 'authentication.User'
