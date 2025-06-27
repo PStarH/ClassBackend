@@ -90,7 +90,8 @@ class TeacherService(LLMBaseService):
     
     def is_available(self) -> bool:
         """检查服务是否可用"""
-        return llm_factory.is_available() if hasattr(self, 'llm_factory') else False
+        from ..core.client import llm_factory
+        return llm_factory.is_available()
 
 
 # 全局服务实例
