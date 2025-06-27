@@ -1,0 +1,3 @@
+"""
+AI schemas module initialization
+"""

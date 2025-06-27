@@ -35,6 +35,7 @@ LOCAL_APPS = [
     'apps.authentication',  # 用户管理 (users, user_settings)
     'apps.courses',         # 课程管理 (course_progress, course_content)
     'apps.learning_plans',  # 学习记录 (study_sessions) - 已有实现
+    'apps.ai_services',     # AI服务 (大模型/AI服务) - 已恢复
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

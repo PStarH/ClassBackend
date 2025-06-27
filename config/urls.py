@@ -27,6 +27,9 @@ urlpatterns = [
         
         # 课程管理
         path('courses/', include('apps.courses.urls')),
+        
+        # AI服务 (大模型/AI服务)
+        path('ai/', include('apps.ai_services.urls')),
     ])),
     
     # 健康检查
