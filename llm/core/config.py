@@ -34,6 +34,32 @@ class LLMConfig:
     # 文件路径配置
     FEEDBACK_FILES_PATH = config('FEEDBACK_FILES_PATH', default='/tmp/feedback/')
     
+    # 性能优化配置
+    REQUEST_TIMEOUT = config('LLM_REQUEST_TIMEOUT', default=30, cast=int)
+    MAX_RETRIES = config('LLM_MAX_RETRIES', default=3, cast=int)
+    RETRY_DELAY = config('LLM_RETRY_DELAY', default=1.0, cast=float)
+    
+    # 并发控制配置
+    MAX_CONCURRENT_REQUESTS = config('LLM_MAX_CONCURRENT_REQUESTS', default=10, cast=int)
+    RATE_LIMIT_PER_MINUTE = config('LLM_RATE_LIMIT_PER_MINUTE', default=60, cast=int)
+    
+    # 质量控制配置
+    ENABLE_RESPONSE_VALIDATION = config('LLM_ENABLE_RESPONSE_VALIDATION', default=True, cast=bool)
+    MIN_RESPONSE_LENGTH = config('LLM_MIN_RESPONSE_LENGTH', default=10, cast=int)
+    MAX_RESPONSE_LENGTH = config('LLM_MAX_RESPONSE_LENGTH', default=4000, cast=int)
+    
+    # 监控配置
+    ENABLE_METRICS = config('LLM_ENABLE_METRICS', default=True, cast=bool)
+    METRICS_RETENTION_DAYS = config('LLM_METRICS_RETENTION_DAYS', default=7, cast=int)
+    
+    # 回退策略配置
+    ENABLE_FALLBACK = config('LLM_ENABLE_FALLBACK', default=True, cast=bool)
+    FALLBACK_MODEL = config('LLM_FALLBACK_MODEL', default='deepseek-chat')
+    
+    # 安全配置
+    ENABLE_CONTENT_FILTERING = config('LLM_ENABLE_CONTENT_FILTERING', default=True, cast=bool)
+    MAX_INPUT_LENGTH = config('LLM_MAX_INPUT_LENGTH', default=2000, cast=int)
+    
     @classmethod
     def validate_config(cls):
         """验证配置是否完整"""

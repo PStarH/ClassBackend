@@ -3,7 +3,7 @@
 
 # 开发工具
 django-extensions==3.2.3
-django-debug-toolbar==4.1.0
+django-debug-toolbar==4.2.0
 ipython==8.14.0
 
 # 代码质量

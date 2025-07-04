@@ -128,46 +128,46 @@ class StudySession(BaseModel, TimestampMixin):
             # 高级性能索引
             models.Index(
                 fields=['user', 'start_time', 'end_time'],
-                name='study_sessions_user_time_range_idx'
+                name='ss_user_time_range_idx'
             ),
             models.Index(
                 fields=['user', 'effectiveness_rating', 'duration_minutes'],
-                name='study_sessions_user_performance_idx'
+                name='ss_user_performance_idx'
             ),
             models.Index(
                 fields=['learning_environment', 'effectiveness_rating'],
-                name='study_sessions_env_performance_idx'
+                name='ss_env_performance_idx'
             ),
             models.Index(
                 fields=['subject_category', 'start_time'],
-                name='study_sessions_subject_time_idx'
+                name='ss_subject_time_idx'
             ),
             models.Index(
                 fields=['user', 'is_active', 'start_time'],
-                name='study_sessions_user_active_time_idx'
+                name='ss_user_active_time_idx'
             ),
             
             # 统计分析索引
             models.Index(
                 fields=['user', 'created_at'],
-                name='study_sessions_user_created_idx'
+                name='ss_user_created_idx'
             ),
             models.Index(
                 fields=['effectiveness_rating', 'duration_minutes'],
-                name='study_sessions_rating_duration_idx'
+                name='ss_rating_duration_idx'
             ),
             
             # 部分索引（仅针对活跃会话）
             models.Index(
                 fields=['user', 'start_time'],
-                name='study_sessions_active_user_time_idx',
+                name='ss_active_user_time_idx',
                 condition=models.Q(is_active=True)
             ),
             
             # 函数索引（PostgreSQL特有）
             models.Index(
                 fields=['start_time'],
-                name='study_sessions_start_time_date_idx',
+                name='ss_start_time_date_idx',
                 # 这将在PostgreSQL中创建基于日期的函数索引
                 # CREATE INDEX study_sessions_start_time_date_idx ON study_sessions (DATE(start_time));
             ),

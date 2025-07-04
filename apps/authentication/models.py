@@ -423,10 +423,33 @@ class UserSettings(models.Model):
         return ', '.join(self.skills) if self.skills else '暂无技能'
 
 
-class UserSession(models.Model, AuditMixin):
+class UserSession(AuditMixin, models.Model):
     """用户会话模型 - 增强安全性"""
     
-    # ...existing fields...
+    session_id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+        verbose_name='会话ID'
+    )
+    
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='sessions',
+        verbose_name='用户'
+    )
+    
+    token = models.CharField(
+        max_length=255,
+        unique=True,
+        verbose_name='访问令牌'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_activity = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
     
     # 安全增强字段
     ip_address = models.GenericIPAddressField(

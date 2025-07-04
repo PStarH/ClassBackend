@@ -47,6 +47,7 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'core.middleware.HealthCheckMiddleware',  # 健康检查中间件
+    'core.monitoring.middleware.PerformanceMonitoringMiddleware',  # 性能监控中间件
     'core.middleware.RateLimitMiddleware',    # 速率限制中间件
     'core.security.middleware.AuditLogMiddleware',  # 审计日志中间件
     'django.middleware.common.CommonMiddleware',
@@ -116,10 +117,10 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
-    # 自定义密码验证器
-    {
-        'NAME': 'core.security.validators.DataSecurityValidator.validate_password_strength',
-    },
+    # 注释掉自定义密码验证器，因为它不兼容Django的密码验证器格式
+    # {
+    #     'NAME': 'core.security.validators.DataSecurityValidator.validate_password_strength',
+    # },
 ]
 
 # 国际化配置
@@ -183,72 +184,49 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # 开发环境
 # Redis 和缓存配置
 CACHES = {
     'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {
-                'max_connections': 50,
-                'retry_on_timeout': True,
-                'socket_keepalive': True,
-                'socket_keepalive_options': {},
-                'health_check_interval': 30,
-                'socket_connect_timeout': 5,
-                'socket_timeout': 5,
-            },
-            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
-            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
-            'IGNORE_EXCEPTIONS': True,
-        },
-        'KEY_PREFIX': 'education_platform',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'education_platform_default',
         'TIMEOUT': 300,  # 5分钟默认超时
-        'VERSION': 1,
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+            'CULL_FREQUENCY': 3,
+        }
     },
     'sessions': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/2'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {
-                'max_connections': 20,
-                'retry_on_timeout': True,
-            },
-            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
-            'IGNORE_EXCEPTIONS': True,
-        },
-        'KEY_PREFIX': 'sessions',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'education_platform_sessions',
         'TIMEOUT': 28800,  # 8小时
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+            'CULL_FREQUENCY': 3,
+        }
     },
     'api_cache': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/3'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {
-                'max_connections': 30,
-                'retry_on_timeout': True,
-            },
-            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
-            'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
-            'IGNORE_EXCEPTIONS': True,
-        },
-        'KEY_PREFIX': 'api',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'education_platform_api',
         'TIMEOUT': 600,  # 10分钟
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+            'CULL_FREQUENCY': 3,
+        }
     },
     'user_cache': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/4'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'CONNECTION_POOL_KWARGS': {
-                'max_connections': 15,
-                'retry_on_timeout': True,
-            },
-            'SERIALIZER': 'django_redis.serializers.json.JSONSerializer',
-            'IGNORE_EXCEPTIONS': True,
-        },
-        'KEY_PREFIX': 'user',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'education_platform_user',
         'TIMEOUT': 1800,  # 30分钟
+        'OPTIONS': {
+            'MAX_ENTRIES': 500,
+            'CULL_FREQUENCY': 3,
+        }
+    },
+    'llm_cache': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'education_platform_llm',
+        'TIMEOUT': 3600,  # 1小时
+        'OPTIONS': {
+            'MAX_ENTRIES': 200,
+            'CULL_FREQUENCY': 3,
+        }
     }
 }
 

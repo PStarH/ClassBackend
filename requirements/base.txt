@@ -2,9 +2,9 @@
 Django==4.2.13
 djangorestframework==3.14.0
 django-cors-headers==4.3.1
-psycopg2-binary==2.9.7
+# psycopg2-binary==2.9.7  # commented out to avoid build issues; optional for SQLite in development
 python-decouple==3.8
-Pillow==10.0.0
+Pillow==10.4.0
 
 # API 文档
 drf-spectacular==0.26.5

@@ -3,9 +3,7 @@
 """
 from django.db import models
 from django.core.exceptions import PermissionDenied
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
+from django.conf import settings
 
 
 class RowLevelSecurityMixin:
@@ -126,7 +124,7 @@ class AuditMixin(models.Model):
     """审计混入类"""
     
     created_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -135,7 +133,7 @@ class AuditMixin(models.Model):
     )
     
     updated_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -199,7 +197,7 @@ class SoftDeleteMixin(models.Model):
     is_deleted = models.BooleanField(default=False, verbose_name='是否删除')
     deleted_at = models.DateTimeField(null=True, blank=True, verbose_name='删除时间')
     deleted_by = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

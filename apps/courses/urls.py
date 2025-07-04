@@ -12,8 +12,8 @@ router = DefaultRouter()
 router.register(r'content', views.CourseContentViewSet, basename='course-content')
 
 urlpatterns = [
-    # API 路由
-    path('api/', include(router.urls)),
+    # 课程内容管理 (RESTful API)
+    path('', include(router.urls)),
     
     # 课程进度管理
     path('progress/', views.CourseProgressListCreateView.as_view(), name='progress-list-create'),
