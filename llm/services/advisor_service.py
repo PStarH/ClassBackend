@@ -24,15 +24,32 @@ from apps.learning_plans.student_notes_models import StudentQuestion, TeacherNot
 def get_plan_cache_key(*args, **kwargs):
     """生成计划缓存键"""
     import hashlib
-    topic = kwargs.get('topic', args[0] if args else 'unknown')
+    # Skip self parameter if present
+    topic = kwargs.get('topic')
+    if not topic and args:
+        # If args[0] is self (AdvisorService instance), use args[1]
+        topic = args[1] if len(args) > 1 and hasattr(args[0], 'create_plan') else args[0]
+    topic = str(topic) if topic else 'unknown'
     return f"plan_cache:{hashlib.md5(topic.encode()).hexdigest()}"
 
 
 def get_chat_cache_key(*args, **kwargs):
     """生成聊天缓存键"""
     import hashlib
-    message = kwargs.get('message', args[0] if args else 'unknown')
-    session_id = kwargs.get('session_id', args[2] if len(args) > 2 else 'default')
+    # Skip self parameter if present
+    message = kwargs.get('message')
+    session_id = kwargs.get('session_id', 'default')
+    
+    if not message and args:
+        # If args[0] is self (AdvisorService instance), adjust indices
+        if len(args) > 0 and hasattr(args[0], 'chat_with_agent'):
+            message = args[1] if len(args) > 1 else 'unknown'
+            session_id = args[3] if len(args) > 3 else 'default'
+        else:
+            message = args[0] if args else 'unknown'
+            session_id = args[2] if len(args) > 2 else 'default'
+    
+    message = str(message) if message else 'unknown'
     key_data = f"{message}:{session_id}"
     return f"chat_cache:{hashlib.md5(key_data.encode()).hexdigest()}"
 
@@ -1202,9 +1219,23 @@ class AdvisorService(LLMBaseService):
         
         return adaptations
 
-# 全局服务实例
-try:
-    advisor_service = AdvisorService()
-except Exception as e:
-    print(f"Warning: Failed to initialize advisor service: {e}")
-    advisor_service = None
+# Service instances will be created on demand
+def get_advisor_service():
+    """获取顾问服务实例 - 延迟初始化"""
+    if not hasattr(get_advisor_service, '_instance'):
+        get_advisor_service._instance = AdvisorService()
+    return get_advisor_service._instance
+
+# 向后兼容的全局变量
+advisor_service = None
+
+def _initialize_service():
+    """按需初始化服务"""
+    global advisor_service
+    if advisor_service is None:
+        try:
+            advisor_service = get_advisor_service()
+        except Exception as e:
+            print(f"Warning: Failed to initialize advisor service: {e}")
+            advisor_service = None
+    return advisor_service

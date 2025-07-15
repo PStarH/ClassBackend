@@ -61,8 +61,9 @@ class LearningStatsCacheService:
             return json.loads(cached_data)
         
         # 计算统计数据
-        start_time = datetime.combine(date, datetime.min.time())
-        end_time = datetime.combine(date, datetime.max.time())
+        from django.utils import timezone as tz
+        start_time = tz.make_aware(datetime.combine(date, datetime.min.time()))
+        end_time = tz.make_aware(datetime.combine(date, datetime.max.time()))
         
         sessions = StudySession.objects.filter(
             user_id=user_id,

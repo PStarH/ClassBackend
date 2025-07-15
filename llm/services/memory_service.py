@@ -221,14 +221,29 @@ class MemoryService:
         if LANGCHAIN_AVAILABLE and llm_factory.is_available():
             try:
                 from ..core.config import LLMConfig
-                self.llm = LangChainOpenAI(
-                    api_key=LLMConfig.API_KEY,
-                    base_url=LLMConfig.BASE_URL,
-                    model=LLMConfig.MODEL_NAME,
-                    temperature=LLMConfig.TEMPERATURE
-                )
+                # 使用兼容性初始化
+                try:
+                    self.llm = LangChainOpenAI(
+                        api_key=LLMConfig.API_KEY,
+                        base_url=LLMConfig.BASE_URL,
+                        model_name=LLMConfig.MODEL_NAME,
+                        temperature=LLMConfig.TEMPERATURE
+                    )
+                except (TypeError, AttributeError) as e:
+                    try:
+                        # 回退到基础参数初始化
+                        self.llm = LangChainOpenAI(
+                            openai_api_key=LLMConfig.API_KEY,
+                            model_name=LLMConfig.MODEL_NAME,
+                            temperature=LLMConfig.TEMPERATURE
+                        )
+                    except Exception as e2:
+                        # 最终回退：只使用必需参数
+                        print(f"Warning: LangChain memory service initialization failed: {e2}")
+                        self.llm = LangChainOpenAI(openai_api_key=LLMConfig.API_KEY)
             except Exception as e:
-                print(f"Warning: Failed to initialize LangChain LLM: {e}")
+                print(f"Warning: Failed to initialize LangChain LLM for memory service: {e}")
+                self.llm = None
         
         # 使用优化的LRU缓存替代普通字典
         self.conversation_memories = OptimizedLRUCache(max_size=200, ttl=7200)  # 2小时TTL
@@ -521,9 +536,23 @@ class MemoryService:
         return stats
 
 
-# 全局记忆服务实例
-try:
-    memory_service = MemoryService()
-except Exception as e:
-    print(f"Warning: Failed to initialize memory service: {e}")
-    memory_service = None
+# Service instances will be created on demand
+def get_memory_service():
+    """获取记忆服务实例 - 延迟初始化"""
+    if not hasattr(get_memory_service, '_instance'):
+        get_memory_service._instance = MemoryService()
+    return get_memory_service._instance
+
+# 向后兼容的全局变量
+memory_service = None
+
+def _initialize_service():
+    """按需初始化服务"""
+    global memory_service
+    if memory_service is None:
+        try:
+            memory_service = get_memory_service()
+        except Exception as e:
+            print(f"Warning: Failed to initialize memory service: {e}")
+            memory_service = None
+    return memory_service

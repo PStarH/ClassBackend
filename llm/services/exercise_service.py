@@ -552,4 +552,20 @@ class ExerciseService(LLMBaseService):
 
 
 # 创建全局服务实例
-exercise_service = ExerciseService()
+# Service instances will be created on demand
+def get_exercise_service():
+    """获取练习服务实例 - 延迟初始化"""
+    global _exercise_service_instance
+    if not hasattr(get_exercise_service, '_instance'):
+        get_exercise_service._instance = ExerciseService()
+    return get_exercise_service._instance
+
+# 向后兼容的全局变量
+exercise_service = None
+
+def _initialize_service():
+    """按需初始化服务"""
+    global exercise_service
+    if exercise_service is None:
+        exercise_service = get_exercise_service()
+    return exercise_service

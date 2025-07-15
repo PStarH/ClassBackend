@@ -578,9 +578,23 @@ class TeacherService(LLMBaseService):
         return llm_factory.is_available()
 
 
-# 全局服务实例
-try:
-    teacher_service = TeacherService()
-except Exception as e:
-    print(f"Warning: Failed to initialize teacher service: {e}")
-    teacher_service = None
+# Service instances will be created on demand
+def get_teacher_service():
+    """获取教师服务实例 - 延迟初始化"""
+    if not hasattr(get_teacher_service, '_instance'):
+        get_teacher_service._instance = TeacherService()
+    return get_teacher_service._instance
+
+# 向后兼容的全局变量
+teacher_service = None
+
+def _initialize_service():
+    """按需初始化服务"""
+    global teacher_service
+    if teacher_service is None:
+        try:
+            teacher_service = get_teacher_service()
+        except Exception as e:
+            print(f"Warning: Failed to initialize teacher service: {e}")
+            teacher_service = None
+    return teacher_service

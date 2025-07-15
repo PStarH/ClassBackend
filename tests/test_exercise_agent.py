@@ -19,6 +19,9 @@ from apps.learning_plans.models import StudySession
 from llm.services.exercise_service import exercise_service
 
 
+import pytest
+
+@pytest.mark.django_db
 def test_exercise_generation():
     """测试练习题生成功能"""
     print("=== 练习题生成服务测试 ===\n")

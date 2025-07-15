@@ -130,16 +130,37 @@ class BaseLLMService(ABC):
         self.cache_manager = CacheManager()
         self.validator = ResponseValidator()
         
-        # LangChain支持
+        # LangChain支持 - 使用兼容性初始化
+        self.langchain_llm = None
         if LANGCHAIN_AVAILABLE:
-            self.langchain_llm = LangChainOpenAI(
-                api_key=LLMConfig.API_KEY,
-                base_url=LLMConfig.BASE_URL,
-                model=LLMConfig.MODEL_NAME,
-                temperature=LLMConfig.TEMPERATURE
-            )
-        else:
-            self.langchain_llm = None
+            try:
+                # 尝试使用最新的 LangChain OpenAI 初始化方式
+                self.langchain_llm = LangChainOpenAI(
+                    api_key=LLMConfig.API_KEY,
+                    base_url=LLMConfig.BASE_URL,
+                    model_name=LLMConfig.MODEL_NAME,
+                    temperature=LLMConfig.TEMPERATURE
+                )
+            except (TypeError, AttributeError) as e:
+                try:
+                    # 回退到基础参数初始化
+                    self.langchain_llm = LangChainOpenAI(
+                        openai_api_key=LLMConfig.API_KEY,
+                        model_name=LLMConfig.MODEL_NAME,
+                        temperature=LLMConfig.TEMPERATURE
+                    )
+                except Exception as e2:
+                    # 最终回退：只使用必需参数
+                    logger.warning(f"LangChain initialization with standard params failed: {e2}")
+                    try:
+                        self.langchain_llm = LangChainOpenAI(
+                            openai_api_key=LLMConfig.API_KEY
+                        )
+                    except Exception as e3:
+                        logger.warning(f"LangChain initialization completely failed: {e3}")
+                        self.langchain_llm = None
+        
+        if self.langchain_llm is None:
             logger.warning("LangChain不可用，将使用基础OpenAI客户端")
     
     def is_available(self) -> bool:

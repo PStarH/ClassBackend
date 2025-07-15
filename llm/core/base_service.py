@@ -67,27 +67,60 @@ class LLMBaseService:
     """LLM 基础服务类"""
     
     def __init__(self):
-        if not llm_factory.is_available():
-            raise RuntimeError("LLM client is not available")
+        # 延迟初始化，避免在模块加载时创建客户端
+        self.client = None
+        self.model_name = None
+        self.langchain_llm = None
+        self._initialized = False
+    
+    def _ensure_initialized(self):
+        """确保服务已初始化"""
+        if self._initialized:
+            return
             
-        from .config import LLMConfig
-        self.client = llm_factory.get_client()
-        self.model_name = llm_factory.get_model_name()
-        
-        # 为 LangChain 创建 LLM 实例（如果可用），若初始化失败则回退
-        if LANGCHAIN_AVAILABLE:
-            try:
-                self.langchain_llm = LangChainOpenAI(
-                    api_key=LLMConfig.API_KEY,
-                    base_url=LLMConfig.BASE_URL,
-                    model=LLMConfig.MODEL_NAME,
-                    temperature=LLMConfig.TEMPERATURE
-                )
-            except TypeError:
-                # 某些 openai 客户端版本不支持部分参数，回退到不使用 LangChain
+        if not llm_factory.is_available():
+            print("Warning: LLM client is not available")
+            return
+            
+        try:
+            from .config import LLMConfig
+            self.client = llm_factory.get_client()
+            self.model_name = llm_factory.get_model_name()
+            
+            # 为 LangChain 创建 LLM 实例（如果可用），若初始化失败则回退
+            if LANGCHAIN_AVAILABLE:
+                try:
+                    # 尝试使用最新的 LangChain OpenAI 初始化方式
+                    self.langchain_llm = LangChainOpenAI(
+                        api_key=LLMConfig.API_KEY,
+                        base_url=LLMConfig.BASE_URL,
+                        model_name=LLMConfig.MODEL_NAME,
+                        temperature=LLMConfig.TEMPERATURE
+                    )
+                except (TypeError, AttributeError) as e:
+                    try:
+                        # 回退到基础参数初始化
+                        self.langchain_llm = LangChainOpenAI(
+                            openai_api_key=LLMConfig.API_KEY,
+                            model_name=LLMConfig.MODEL_NAME,
+                            temperature=LLMConfig.TEMPERATURE
+                        )
+                    except Exception as e2:
+                        # 最终回退：只使用必需参数
+                        print(f"Warning: LangChain initialization failed with standard params: {e2}")
+                        try:
+                            self.langchain_llm = LangChainOpenAI(
+                                openai_api_key=LLMConfig.API_KEY
+                            )
+                        except Exception as e3:
+                            print(f"Warning: Failed to initialize LangChain LLM completely: {e3}")
+                            self.langchain_llm = None
+            else:
                 self.langchain_llm = None
-        else:
-            self.langchain_llm = None
+                
+            self._initialized = True
+        except Exception as e:
+            print(f"Warning: Failed to initialize LLM service: {e}")
     
     def _get_pydantic_parser(self, pydantic_object: Type[BaseModel]):
         """获取Pydantic解析器"""
@@ -140,6 +173,10 @@ class LLMBaseService:
     
     def simple_chat(self, prompt: str) -> str:
         """简单的聊天接口，不依赖LangChain"""
+        self._ensure_initialized()
+        if not self.client:
+            return "AI服务暂时不可用"
+            
         response = self.client.chat.completions.create(
             model=self.model_name,
             messages=[
@@ -152,7 +189,9 @@ class LLMBaseService:
     
     def _execute_chain_with_fallback(self, chain, **kwargs) -> Dict[str, Any]:
         """执行 LangChain 并提供回退机制"""
-        if not LANGCHAIN_AVAILABLE or not self.langchain_llm:
+        self._ensure_initialized()
+        
+        if not LANGCHAIN_AVAILABLE or not self.langchain_llm or not self.client:
             return self._fallback_to_openai(chain, **kwargs)
             
         try:
@@ -167,6 +206,9 @@ class LLMBaseService:
     
     def _fallback_to_openai(self, chain, **kwargs) -> Dict[str, Any]:
         """回退到原始 OpenAI 客户端"""
+        if not self.client:
+            return {"error": "AI服务暂时不可用"}
+            
         # 简单的提示词格式化
         if hasattr(chain, 'prompt') and hasattr(chain.prompt, 'format'):
             formatted_prompt = chain.prompt.format(**kwargs)

@@ -2,37 +2,30 @@
 Django==4.2.13
 djangorestframework==3.14.0
 django-cors-headers==4.3.1
-# psycopg2-binary==2.9.7  # commented out to avoid build issues; optional for SQLite in development
 python-decouple==3.8
-Pillow==10.4.0
 
 # API 文档
 drf-spectacular==0.26.5
 
 # AI 相关
-langchain==0.1.0
-langchain-openai==0.0.5
-openai==1.30.0
+langchain==0.3.26
+langchain-openai==0.3.28
+langchain-community==0.3.27
+openai==1.95.1
 pydantic==2.4.2
 
 # 数据库和缓存
 redis==4.5.4
 django-redis==5.2.0
+psycopg2-binary==2.9.7
 
 # 安全相关
 cryptography==41.0.3
-pyotp==2.9.0
-qrcode==7.4.2
 
 # 工具和实用程序
 requests==2.31.0
 python-dateutil==2.8.2
 celery==5.3.1
-django-celery-beat==2.5.0
 
 # 日志和监控
 sentry-sdk==1.32.0
-
-# 性能和分析
-django-debug-toolbar==4.2.0
-memory-profiler==0.61.0

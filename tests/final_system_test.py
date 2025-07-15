@@ -12,7 +12,29 @@ from datetime import datetime
 BASE_URL = "http://127.0.0.1:8000"
 TIMEOUT = 10
 
-def test_endpoint(method, endpoint, data=None, headers=None, expect_status=None):
+import pytest
+
+@pytest.fixture
+def method():
+    return "GET"
+
+@pytest.fixture  
+def endpoint():
+    return "/api/v1/"
+
+@pytest.fixture
+def data():
+    return None
+
+@pytest.fixture
+def headers():
+    return None
+
+@pytest.fixture
+def expect_status():
+    return None
+
+def test_endpoint(method, endpoint, data, headers, expect_status):
     """Test a single endpoint and return results"""
     url = f"{BASE_URL}{endpoint}"
     headers = headers or {"Accept": "application/json"}

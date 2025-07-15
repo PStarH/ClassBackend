@@ -43,7 +43,7 @@ class PerformanceMonitoringMiddleware(MiddlewareMixin):
                 'method': request.method,
                 'path': request.path,
                 'db_queries': db_queries,
-                'user_id': str(request.user.id) if hasattr(request, 'user') and request.user.is_authenticated else None,
+                'user_id': str(request.user.uuid) if hasattr(request, 'user') and request.user.is_authenticated else None,
                 'content_length': len(response.content) if hasattr(response, 'content') else 0
             }
         )
@@ -111,11 +111,19 @@ class CacheMonitoringMixin:
     @staticmethod
     def monitor_cache_get(original_get):
         """监控缓存获取"""
-        def wrapper(key, default=None, version=None):
+        def wrapper(key, default=None, version=None, **kwargs):
             start_time = time.time()
             
             try:
-                result = original_get(key, default, version)
+                # Check if original_get accepts 'using' parameter
+                import inspect
+                sig = inspect.signature(original_get)
+                if 'using' in sig.parameters or any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
+                    # Pass all arguments including 'using' if supported
+                    result = original_get(key, default, version, **kwargs)
+                else:
+                    # Don't pass kwargs if not supported
+                    result = original_get(key, default, version)
                 success = True
                 is_hit = result is not default
                 return result
@@ -144,15 +152,24 @@ class CacheMonitoringMixin:
     @staticmethod
     def monitor_cache_set(original_set):
         """监控缓存设置"""
-        def wrapper(key, value, timeout=None, version=None):
+        def wrapper(key, value, timeout=None, version=None, **kwargs):
             start_time = time.time()
             
             try:
-                result = original_set(key, value, timeout, version)
+                # Check if original_set accepts 'using' parameter
+                import inspect
+                sig = inspect.signature(original_set)
+                if 'using' in sig.parameters or any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
+                    # Pass all arguments including 'using' if supported
+                    result = original_set(key, value, timeout, version, **kwargs)
+                else:
+                    # Don't pass kwargs if not supported
+                    result = original_set(key, value, timeout, version)
                 success = True
                 return result
             except Exception as e:
                 success = False
+                logger.error(f"Cache set operation failed: {e}")
                 raise
             finally:
                 duration_ms = (time.time() - start_time) * 1000
