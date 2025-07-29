@@ -12,12 +12,12 @@ langchain==0.3.26
 langchain-openai==0.3.28
 langchain-community==0.3.27
 openai==1.95.1
-pydantic==2.4.2
+pydantic>=2.7.4,<3.0.0
 
 # 数据库和缓存
 redis==4.5.4
 django-redis==5.2.0
-psycopg2-binary==2.9.7
+# psycopg2-binary==2.9.7  # Commented out for development with SQLite
 
 # 安全相关
 cryptography==41.0.3

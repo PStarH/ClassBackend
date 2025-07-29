@@ -7,7 +7,7 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.core.validators import EmailValidator
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password, check_password
-from django.contrib.postgres.fields import ArrayField
+# from django.contrib.postgres.fields import ArrayField  # Commented for SQLite compatibility
 from core.security.mixins import AuditMixin, SoftDeleteMixin, RowLevelSecurityMixin
 from core.security.validators import DataSecurityValidator
 import secrets
@@ -366,13 +366,12 @@ class UserSettings(models.Model):
         verbose_name='备注'
     )
     
-    # 技能列表 - 使用PostgreSQL ArrayField存储字符串数组
-    skills = ArrayField(
-        models.CharField(max_length=100),
-        default=list,
+    # 技能列表 - 使用JSON text field for SQLite compatibility
+    skills = models.TextField(
+        default='[]',
         blank=True,
         verbose_name='技能列表',
-        help_text='用户掌握的技能列表，字符串数组格式'
+        help_text='用户掌握的技能列表，JSON格式存储'
     )
     
     created_at = models.DateTimeField(
@@ -396,11 +395,7 @@ class UserSettings(models.Model):
             models.Index(fields=['education_level']),  # 按教育水平分析
         ]
         constraints = [
-            # 确保技能数组不超过合理数量
-            models.CheckConstraint(
-                check=models.Q(skills__len__lte=50),
-                name='user_settings_skills_max_count'
-            ),
+            # Constraints removed for SQLite compatibility
         ]
     
     def __str__(self):

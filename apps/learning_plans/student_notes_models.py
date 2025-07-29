@@ -3,7 +3,7 @@
 """
 import uuid
 from django.db import models
-from django.contrib.postgres.fields import ArrayField
+# from django.contrib.postgres.fields import ArrayField  # Commented for SQLite
 from apps.authentication.models import User
 from apps.courses.models import CourseProgress
 from .models import StudySession
@@ -96,12 +96,11 @@ class StudentQuestion(models.Model):
         verbose_name='教师备注'
     )
     
-    tags = ArrayField(
-        models.CharField(max_length=50),
-        default=list,
+    tags = models.TextField(
+        default='[]',
         blank=True,
         verbose_name='标签',
-        help_text='用于分类和检索的标签'
+        help_text='用于分类和检索的标签，JSON格式存储'
     )
     
     created_at = models.DateTimeField(
@@ -164,26 +163,25 @@ class StudentLearningPattern(models.Model):
         verbose_name='学生'
     )
     
-    strengths = ArrayField(
-        models.CharField(max_length=20, choices=LEARNING_STRENGTHS),
-        default=list,
+    strengths = models.TextField(
+        default='[]',
         blank=True,
-        verbose_name='学习优势'
+        verbose_name='学习优势',
+        help_text='学习优势，JSON格式存储'
     )
     
-    weaknesses = ArrayField(
-        models.CharField(max_length=20, choices=WEAKNESS_AREAS),
-        default=list,
+    weaknesses = models.TextField(
+        default='[]',
         blank=True,
-        verbose_name='学习弱项'
+        verbose_name='学习弱项',
+        help_text='学习弱项，JSON格式存储'
     )
     
-    frequent_question_types = ArrayField(
-        models.CharField(max_length=20),
-        default=list,
+    frequent_question_types = models.TextField(
+        default='[]',
         blank=True,
         verbose_name='常见问题类型',
-        help_text='基于历史问题分析得出的常见问题类型'
+        help_text='基于历史问题分析得出的常见问题类型，JSON格式存储'
     )
     
     preferred_learning_time = models.JSONField(
@@ -302,12 +300,11 @@ class TeacherNotes(models.Model):
         help_text='结构化的观察数据，如学习时长、错误模式等'
     )
     
-    action_items = ArrayField(
-        models.CharField(max_length=200),
-        default=list,
+    action_items = models.TextField(
+        default='[]',
         blank=True,
         verbose_name='行动项',
-        help_text='基于观察得出的具体行动建议'
+        help_text='基于观察得出的具体行动建议，JSON格式存储'
     )
     
     follow_up_date = models.DateTimeField(
@@ -321,11 +318,11 @@ class TeacherNotes(models.Model):
         verbose_name='是否与学生分享'
     )
     
-    tags = ArrayField(
-        models.CharField(max_length=50),
-        default=list,
+    tags = models.TextField(
+        default='[]',
         blank=True,
-        verbose_name='标签'
+        verbose_name='标签',
+        help_text='标签，JSON格式存储'
     )
     
     created_at = models.DateTimeField(
