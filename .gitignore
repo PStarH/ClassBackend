@@ -20,3 +20,6 @@ DjangoRestApisPostgreSQL/settings.py
 
 # macOS specific
 .DS_Store
+
+# Virtual environment
+venv/
