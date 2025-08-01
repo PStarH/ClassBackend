@@ -16,7 +16,7 @@ django.setup()
 from apps.authentication.models import User
 from apps.courses.models import CourseProgress, CourseContent
 from apps.learning_plans.models import StudySession
-from llm.services.exercise_service import exercise_service
+from llm.services.exercise_service import get_exercise_service
 
 
 import pytest
@@ -25,6 +25,9 @@ import pytest
 def test_exercise_generation():
     """测试练习题生成功能"""
     print("=== 练习题生成服务测试 ===\n")
+    
+    # Get service instance
+    exercise_service = get_exercise_service()
     
     # 1. 检查服务状态
     print("1. 检查服务状态:")

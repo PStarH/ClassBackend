@@ -9,6 +9,7 @@ import django
 from pathlib import Path
 import traceback
 import json
+import pytest
 
 # Add the project root to Python path
 project_root = Path(__file__).parent.parent
@@ -154,6 +155,7 @@ def test_full_integration():
         traceback.print_exc()
         return results
 
+@pytest.mark.django_db
 def test_performance_metrics():
     """Test system performance metrics"""
     print("\n⚡ Testing Performance Metrics")
