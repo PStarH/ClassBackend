@@ -19,6 +19,7 @@ sys.path.insert(0, str(project_root))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.development')
 django.setup()
 
+@pytest.mark.django_db
 def test_full_integration():
     """Test the complete workflow from user creation to AI service usage"""
     print("🔄 Testing Full Integration Workflow")
@@ -148,12 +149,12 @@ def test_full_integration():
         # Clean up test data
         study_session.delete()
         
-        return results
+        assert results
         
     except Exception as e:
         results['integration_error'] = f"❌ Integration test failed: {str(e)}"
         traceback.print_exc()
-        return results
+        raise e
 
 @pytest.mark.django_db
 def test_performance_metrics():
@@ -189,7 +190,7 @@ def test_performance_metrics():
     ai_time = time.time() - start_time
     results['ai_check_time'] = f"✅ AI Check: {ai_time:.3f}s ({'Available' if available else 'Unavailable'})"
     
-    return results
+    assert results
 
 def test_security_measures():
     """Test security configurations"""
@@ -223,7 +224,7 @@ def test_security_measures():
     else:
         results['allowed_hosts'] = "⚠️ No allowed hosts configured"
     
-    return results
+    assert results
 
 def main():
     """Run comprehensive integration tests"""

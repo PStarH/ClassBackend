@@ -3,6 +3,7 @@
 """
 import uuid
 from django.db import models
+from django.db.models import F
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
 
@@ -320,10 +321,17 @@ class CourseProgress(models.Model):
         return self.get_proficiency_level_display()
     
     def add_learning_hours(self, hours):
-        """增加学习时长"""
+        """增加学习时长 - 使用原子操作防止竞争条件"""
         if hours > 0:
-            self.learning_hour_total += hours
-            self.save(update_fields=['learning_hour_total', 'updated_at'])
+            # 使用F表达式进行原子更新，防止竞争条件
+            CourseProgress.objects.filter(
+                course_uuid=self.course_uuid
+            ).update(
+                learning_hour_total=F('learning_hour_total') + hours,
+                updated_at=timezone.now()
+            )
+            # 刷新实例以获取最新值
+            self.refresh_from_db(fields=['learning_hour_total', 'updated_at'])
     
     def update_weekly_hours(self, hours):
         """更新本周学习时长"""

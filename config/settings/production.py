@@ -7,26 +7,33 @@ from .base import *
 DEBUG = False
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=lambda v: [s.strip() for s in v.split(',')])
 
-# 生产环境数据库
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME'),
-        'USER': config('DB_USER'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT'),
-        'OPTIONS': {
-            'sslmode': 'require',
-        },
+# 生产环境数据库 - 使用优化配置
+from core.performance.advanced_database_config import get_database_config
+
+DATABASES = get_database_config('production')
+
+# 为生产环境覆盖特定设置
+DATABASES['default'].update({
+    'NAME': config('DB_NAME'),
+    'USER': config('DB_USER'), 
+    'PASSWORD': config('DB_PASSWORD'),
+    'HOST': config('DB_HOST'),
+    'PORT': config('DB_PORT'),
+    'OPTIONS': {
+        **DATABASES['default']['OPTIONS'],
+        'sslmode': 'require',  # 生产环境强制SSL
+        'sslcert': config('DB_SSL_CERT', default=''),
+        'sslkey': config('DB_SSL_KEY', default=''),
+        'sslrootcert': config('DB_SSL_ROOT_CERT', default=''),
     }
-}
+})
 
 # 安全设置
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_SECONDS = 31536000
+SECURE_HSTS_SECONDS = 31536000  # 1年
+SECURE_HSTS_PRELOAD = True
 SECURE_REDIRECT_EXEMPT = []
 SECURE_SSL_REDIRECT = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -35,8 +42,65 @@ USE_TZ = True
 # Session 安全
 SESSION_COOKIE_SECURE = True
 SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_AGE = 28800  # 8小时
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# CSRF 安全
 CSRF_COOKIE_SECURE = True
 CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS', 
+    default='https://yourplatform.com,https://api.yourplatform.com',
+    cast=lambda v: [s.strip() for s in v.split(',')]
+)
+
+# 内容安全策略 (CSP)
+CSP_DEFAULT_SRC = "'self'"
+CSP_SCRIPT_SRC = "'self' 'unsafe-inline' https://cdn.jsdelivr.net"
+CSP_STYLE_SRC = "'self' 'unsafe-inline' https://fonts.googleapis.com"
+CSP_FONT_SRC = "'self' https://fonts.gstatic.com"
+CSP_IMG_SRC = "'self' data: https:"
+CSP_CONNECT_SRC = "'self' https://api.yourplatform.com"
+CSP_FRAME_ANCESTORS = "'none'"
+
+# X-Frame-Options
+X_FRAME_OPTIONS = 'DENY'
+
+# 权限策略
+PERMISSIONS_POLICY = {
+    'geolocation': [],
+    'microphone': [],
+    'camera': [],
+    'payment': [],
+    'usb': [],
+}
+
+# CORS 生产配置
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='https://yourplatform.com,https://app.yourplatform.com',
+    cast=lambda v: [s.strip() for s in v.split(',')]
+)
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+CORS_EXPOSE_HEADERS = [
+    'content-type',
+    'x-ratelimit-remaining',
+    'x-ratelimit-limit',
+]
 
 # 静态文件处理
 STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'

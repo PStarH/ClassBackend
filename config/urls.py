@@ -6,6 +6,7 @@ from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import TemplateView
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 # API 版本
 API_VERSION = 'v1'
@@ -13,6 +14,11 @@ API_VERSION = 'v1'
 urlpatterns = [
     # 管理后台
     path('admin/', admin.site.urls),
+    
+    # API 文档路由
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
     
     # API 路由
     path(f'api/{API_VERSION}/', include([

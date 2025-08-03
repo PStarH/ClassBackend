@@ -7,7 +7,15 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.core.validators import EmailValidator
 from django.utils import timezone
 from django.contrib.auth.hashers import make_password, check_password
-# from django.contrib.postgres.fields import ArrayField  # Commented for SQLite compatibility
+from django.conf import settings
+
+# PostgreSQL特定字段导入
+try:
+    from django.contrib.postgres.fields import ArrayField
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    POSTGRES_AVAILABLE = False
+
 from core.security.mixins import AuditMixin, SoftDeleteMixin, RowLevelSecurityMixin
 from core.security.validators import DataSecurityValidator
 import secrets
@@ -165,6 +173,15 @@ class User(AbstractBaseUser, PermissionsMixin, AuditMixin, SoftDeleteMixin, RowL
         db_table = 'users'
         verbose_name = '用户'
         verbose_name_plural = '用户'
+        indexes = [
+            models.Index(fields=['email']),  # 主要查询字段
+            models.Index(fields=['created_at']),  # 时间查询
+            models.Index(fields=['last_login']),  # 登录时间查询
+            models.Index(fields=['is_active']),  # 活跃状态过滤
+            models.Index(fields=['account_locked_until']),  # 账户锁定状态查询
+            models.Index(fields=['email_verified']),  # 邮箱验证状态
+            models.Index(fields=['two_factor_enabled']),  # 双因素认证状态
+        ]
         
     def __str__(self):
         return self.email
@@ -366,13 +383,23 @@ class UserSettings(models.Model):
         verbose_name='备注'
     )
     
-    # 技能列表 - 使用JSON text field for SQLite compatibility
-    skills = models.TextField(
-        default='[]',
-        blank=True,
-        verbose_name='技能列表',
-        help_text='用户掌握的技能列表，JSON格式存储'
-    )
+    # 技能列表 - 根据数据库类型使用不同字段
+    if POSTGRES_AVAILABLE and 'postgresql' in settings.DATABASES['default']['ENGINE']:
+        skills = ArrayField(
+            models.CharField(max_length=50),
+            default=list,
+            blank=True,
+            verbose_name='技能列表',
+            help_text='用户掌握的技能列表'
+        )
+    else:
+        # SQLite兼容性：使用JSON text field
+        skills = models.TextField(
+            default='[]',
+            blank=True,
+            verbose_name='技能列表',
+            help_text='用户掌握的技能列表，JSON格式存储'
+        )
     
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -403,19 +430,63 @@ class UserSettings(models.Model):
     
     def add_skill(self, skill):
         """添加技能"""
-        if skill and skill not in self.skills:
-            self.skills.append(skill)
-            self.save(update_fields=['skills'])
+        if not skill:
+            return
+            
+        if POSTGRES_AVAILABLE and isinstance(self.skills, list):
+            # PostgreSQL ArrayField
+            if skill not in self.skills:
+                self.skills.append(skill)
+                self.save(update_fields=['skills'])
+        else:
+            # JSON field for SQLite
+            import json
+            try:
+                skills_list = json.loads(self.skills) if isinstance(self.skills, str) else self.skills
+            except (json.JSONDecodeError, TypeError):
+                skills_list = []
+            
+            if skill not in skills_list:
+                skills_list.append(skill)
+                self.skills = json.dumps(skills_list)
+                self.save(update_fields=['skills'])
     
     def remove_skill(self, skill):
         """移除技能"""
-        if skill in self.skills:
-            self.skills.remove(skill)
-            self.save(update_fields=['skills'])
+        if not skill:
+            return
+            
+        if POSTGRES_AVAILABLE and isinstance(self.skills, list):
+            # PostgreSQL ArrayField
+            if skill in self.skills:
+                self.skills.remove(skill)
+                self.save(update_fields=['skills'])
+        else:
+            # JSON field for SQLite
+            import json
+            try:
+                skills_list = json.loads(self.skills) if isinstance(self.skills, str) else self.skills
+            except (json.JSONDecodeError, TypeError):
+                skills_list = []
+            
+            if skill in skills_list:
+                skills_list.remove(skill)
+                self.skills = json.dumps(skills_list)
+                self.save(update_fields=['skills'])
     
     def get_skills_display(self):
         """获取技能显示字符串"""
-        return ', '.join(self.skills) if self.skills else '暂无技能'
+        if POSTGRES_AVAILABLE and isinstance(self.skills, list):
+            # PostgreSQL ArrayField
+            return ', '.join(self.skills) if self.skills else '暂无技能'
+        else:
+            # JSON field for SQLite
+            import json
+            try:
+                skills_list = json.loads(self.skills) if isinstance(self.skills, str) else self.skills
+                return ', '.join(skills_list) if skills_list else '暂无技能'
+            except (json.JSONDecodeError, TypeError):
+                return '暂无技能'
 
 
 class UserSession(AuditMixin, models.Model):
@@ -482,6 +553,21 @@ class UserSession(AuditMixin, models.Model):
     )
     
     # ...existing code...
+    
+    class Meta:
+        verbose_name = '用户会话'
+        verbose_name_plural = '用户会话'
+        indexes = [
+            models.Index(fields=['user']),  # 按用户查询会话
+            models.Index(fields=['token']),  # Token查询
+            models.Index(fields=['created_at']),  # 按创建时间查询
+            models.Index(fields=['last_activity']),  # 按活动时间查询
+            models.Index(fields=['expires_at']),  # 按过期时间查询
+            models.Index(fields=['is_active']),  # 活跃状态查询
+            models.Index(fields=['ip_address']),  # IP地址查询
+            models.Index(fields=['is_suspicious']),  # 可疑会话查询
+            models.Index(fields=['user', 'is_active']),  # 组合索引：用户的活跃会话
+        ]
     
     def mark_as_suspicious(self, reason):
         """标记为可疑会话"""

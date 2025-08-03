@@ -7,7 +7,8 @@ from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
-from django.db.models import Avg, Sum, Count, Q, F
+from django.db import transaction
+from django.db.models import Avg, Sum, Count, Q, F, Case, When, Value, IntegerField
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 
 from .models import CourseProgress, CourseContent
@@ -40,7 +41,9 @@ class CourseProgressListCreateView(generics.ListCreateAPIView):
     
     def get_queryset(self):
         """获取当前用户的课程进度"""
-        return CourseProgress.objects.filter(user_uuid=self.request.user)
+        return CourseProgress.objects.filter(
+            user_uuid=self.request.user
+        ).select_related('content_id', 'user_uuid')
     
     @extend_schema(
         summary="获取课程进度列表",
@@ -103,6 +106,7 @@ class CourseProgressListCreateView(generics.ListCreateAPIView):
             400: OpenApiResponse(description="创建失败")
         }
     )
+    @transaction.atomic
     def post(self, request, *args, **kwargs):
         """创建课程进度"""
         try:
@@ -151,7 +155,9 @@ class CourseProgressDetailView(generics.RetrieveUpdateDestroyAPIView):
     
     def get_queryset(self):
         """获取当前用户的课程进度"""
-        return CourseProgress.objects.filter(user_uuid=self.request.user)
+        return CourseProgress.objects.filter(
+            user_uuid=self.request.user
+        ).select_related('content_id', 'user_uuid')
     
     @extend_schema(
         summary="获取课程进度详情",
@@ -196,22 +202,34 @@ class CourseProgressStatsView(APIView):
     def get(self, request):
         """获取课程进度统计"""
         try:
-            user_progresses = CourseProgress.objects.filter(user_uuid=request.user)
+            user_progresses = CourseProgress.objects.filter(
+                user_uuid=request.user
+            ).select_related('content_id', 'user_uuid')
             
             # 基础统计
             total_courses = user_progresses.count()
-            completed_courses = sum(1 for p in user_progresses if p.is_completed())
+            
+            # 使用数据库计算而不是Python循环
+            progress_stats = user_progresses.aggregate(
+                total_learning_hours=Sum('learning_hour_total'),
+                average_proficiency=Avg('proficiency_level'),
+                completed_count=Sum(
+                    Case(
+                        When(
+                            est_finish_hour__isnull=False,
+                            learning_hour_total__gte=F('est_finish_hour'),
+                            then=Value(1)
+                        ),
+                        default=Value(0),
+                        output_field=IntegerField()
+                    )
+                )
+            )
+            
+            completed_courses = progress_stats['completed_count'] or 0
             in_progress_courses = total_courses - completed_courses
-            
-            # 学习时长统计
-            total_learning_hours = user_progresses.aggregate(
-                total=Sum('learning_hour_total')
-            )['total'] or 0
-            
-            # 平均掌握程度
-            average_proficiency = user_progresses.aggregate(
-                avg=Avg('proficiency_level')
-            )['avg'] or 0
+            total_learning_hours = progress_stats['total_learning_hours'] or 0
+            average_proficiency = progress_stats['average_proficiency'] or 0
             
             # 学科列表
             subjects = list(user_progresses.values_list(
@@ -262,6 +280,7 @@ class CourseProgressFeedbackView(APIView):
             404: OpenApiResponse(description="课程进度不存在")
         }
     )
+    @transaction.atomic
     def post(self, request, course_uuid):
         """添加课程反馈"""
         try:
@@ -319,6 +338,7 @@ class CourseProgressLearningHoursView(APIView):
             404: OpenApiResponse(description="课程进度不存在")
         }
     )
+    @transaction.atomic
     def post(self, request, course_uuid):
         """更新学习时长"""
         try:
