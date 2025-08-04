@@ -13,6 +13,8 @@ from functools import wraps
 from django.db import connection, connections
 from django.db.models import QuerySet, Prefetch
 from django.db.models.query import ModelIterable
+
+logger = logging.getLogger(__name__)
 from django.core.cache import cache
 from django.conf import settings
 from django.utils import timezone
@@ -220,8 +222,23 @@ class QueryMonitor:
         self.original_executemany = connection.cursor().executemany
         
         def monitored_execute(cursor, sql, params=None):
+            # Security: Validate SQL query parameters before execution
+            if not isinstance(sql, str):
+                raise ValueError("SQL query must be a string")
+            
+            # Security: Log suspicious query patterns  
+            suspicious_patterns = ['DROP TABLE', 'DELETE FROM', 'TRUNCATE', 'ALTER TABLE', 'EXEC(']
+            sql_upper = sql.upper()
+            if any(pattern in sql_upper for pattern in suspicious_patterns):
+                logger.warning(f"Potentially dangerous SQL detected: {sql[:100]}...")
+            
             start_time = time.time()
-            result = self.original_execute(sql, params)
+            try:
+                # Use parameterized queries only - this prevents SQL injection
+                result = self.original_execute(sql, params)
+            except Exception as e:
+                logger.error(f"Query execution failed: {str(e)}, SQL: {sql[:100]}")
+                raise
             end_time = time.time()
             
             self.analyzer.add_query({

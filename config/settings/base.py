@@ -9,7 +9,9 @@ from decouple import config
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # 安全配置
-SECRET_KEY = config('SECRET_KEY', default='w-k7xx44*y)tq&@b5=9bniqw_q486rywjacy4+vo_**94lh=bd')
+# SECURITY WARNING: SECRET_KEY must be set in environment variables
+# Generate a new key using: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+SECRET_KEY = config('SECRET_KEY')  # No default - force environment variable
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
 

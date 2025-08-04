@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
-# JWT配置
-JWT_SECRET_KEY = config('JWT_SECRET_KEY', default=settings.SECRET_KEY)
+# JWT配置 - SECURITY: JWT secret must be separate from Django SECRET_KEY
+JWT_SECRET_KEY = config('JWT_SECRET_KEY')  # No default - must be set separately
 JWT_ALGORITHM = config('JWT_ALGORITHM', default='HS256')
 JWT_ACCESS_TOKEN_LIFETIME = config('JWT_ACCESS_TOKEN_LIFETIME', default=900, cast=int)  # 15分钟
 JWT_REFRESH_TOKEN_LIFETIME = config('JWT_REFRESH_TOKEN_LIFETIME', default=604800, cast=int)  # 7天
@@ -50,14 +50,22 @@ class DeviceManager:
     
     @staticmethod
     def generate_device_id(request) -> str:
-        """生成设备ID"""
+        """生成设备ID - 使用安全的哈希算法"""
         user_agent = request.META.get('HTTP_USER_AGENT', '')
         ip_address = DeviceManager.get_client_ip(request)
         
-        # 简单的设备指纹
+        # 增强的设备指纹，使用SHA-256和盐值提高安全性
         import hashlib
-        device_string = f"{user_agent}:{ip_address}"
-        device_id = hashlib.md5(device_string.encode()).hexdigest()[:16]
+        import secrets
+        
+        # 使用应用级别的盐值（应该在环境变量中配置）
+        device_salt = config('DEVICE_FINGERPRINT_SALT', default='default-device-salt-change-in-production')
+        
+        # 创建设备指纹字符串
+        device_string = f"{user_agent}:{ip_address}:{device_salt}"
+        
+        # 使用SHA-256替代MD5，提供更强的安全性
+        device_id = hashlib.sha256(device_string.encode('utf-8')).hexdigest()[:32]
         
         return device_id
     
@@ -195,8 +203,8 @@ class JWTTokenManager:
         logger.info(f"Blacklisted token {jti}")
     
     @staticmethod
-    def refresh_access_token(refresh_token: str) -> str:
-        """使用刷新token生成新的访问token"""
+    def refresh_access_token(refresh_token: str) -> Tuple[str, str]:
+        """使用刷新token生成新的访问token和新的刷新token（token rotation）"""
         try:
             payload = JWTTokenManager.decode_token(refresh_token)
             
@@ -224,19 +232,33 @@ class JWTTokenManager:
             except User.DoesNotExist:
                 raise JWTError("User not found or inactive")
             
+            # 立即废弃旧的refresh token以防止重放攻击
+            cache.delete(cache_key)
+            
             # 生成新的访问token
             now = timezone.now()
-            new_jti = str(uuid.uuid4())
+            new_access_jti = str(uuid.uuid4())
+            new_refresh_jti = str(uuid.uuid4())
             
             access_payload = {
                 'user_id': user.id,
                 'username': user.username,
                 'email': user.email,
                 'device_id': device_id,
-                'jti': new_jti,
+                'jti': new_access_jti,
                 'token_type': 'access',
                 'iat': now,
                 'exp': now + timedelta(seconds=JWT_ACCESS_TOKEN_LIFETIME),
+            }
+            
+            # 生成新的刷新token (Token Rotation)
+            refresh_payload = {
+                'user_id': user.id,
+                'device_id': device_id,
+                'jti': new_refresh_jti,
+                'token_type': 'refresh',
+                'iat': now,
+                'exp': now + timedelta(seconds=JWT_REFRESH_TOKEN_LIFETIME),
             }
             
             # 将旧的访问token加入黑名单
@@ -244,14 +266,21 @@ class JWTTokenManager:
             if old_access_jti:
                 JWTTokenManager.blacklist_token(old_access_jti)
             
-            # 更新刷新token映射
-            token_data['access_jti'] = new_jti
-            cache.set(cache_key, token_data, JWT_REFRESH_TOKEN_LIFETIME)
+            # 创建新的refresh token映射
+            new_cache_key = f"refresh_token:{new_refresh_jti}"
+            new_token_data = {
+                'user_id': user_id,
+                'device_id': device_id,  
+                'access_jti': new_access_jti,
+                'issued_at': now.isoformat(),
+            }
+            cache.set(new_cache_key, new_token_data, JWT_REFRESH_TOKEN_LIFETIME)
             
             new_access_token = jwt.encode(access_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+            new_refresh_token = jwt.encode(refresh_payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
             
-            logger.info(f"Refreshed access token for user {user_id}")
-            return new_access_token
+            logger.info(f"Rotated tokens for user {user_id} (access: {new_access_jti}, refresh: {new_refresh_jti})")
+            return new_access_token, new_refresh_token
             
         except JWTError:
             raise
@@ -420,12 +449,13 @@ class JWTTokenRefreshMiddleware:
                 refresh_token = request.COOKIES.get('refresh_token')
                 if refresh_token:
                     try:
-                        new_access_token = JWTTokenManager.refresh_access_token(refresh_token)
+                        new_access_token, new_refresh_token = JWTTokenManager.refresh_access_token(refresh_token)
                         
-                        # 在响应头中返回新token
+                        # 在响应头中返回新的token对
                         response['X-New-Access-Token'] = new_access_token
+                        response['X-New-Refresh-Token'] = new_refresh_token
                         
-                        logger.info(f"Auto-refreshed token for user {request.user.id}")
+                        logger.info(f"Auto-refreshed and rotated tokens for user {request.user.id}")
                         
                     except JWTError as e:
                         logger.warning(f"Auto-refresh failed: {e}")
