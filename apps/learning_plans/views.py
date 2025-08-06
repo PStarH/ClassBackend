@@ -53,7 +53,10 @@ class StudySessionViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """获取查询集"""
-        queryset = StudySession.objects.all()
+        queryset = StudySession.objects.select_related(
+            'user', 
+            'course_progress'
+        ).order_by('-start_time')
         
         # 按状态过滤
         is_active = self.request.query_params.get('is_active')
