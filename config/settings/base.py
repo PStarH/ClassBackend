@@ -432,7 +432,7 @@ CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 
 # JWT增强配置
-JWT_SECRET_KEY = config('JWT_SECRET_KEY', default=SECRET_KEY)
+JWT_SECRET_KEY = config('JWT_SECRET_KEY')  # No default - force separate JWT secret key
 JWT_ALGORITHM = config('JWT_ALGORITHM', default='HS256')
 JWT_ACCESS_TOKEN_LIFETIME = config('JWT_ACCESS_TOKEN_LIFETIME', default=900, cast=int)  # 15分钟
 JWT_REFRESH_TOKEN_LIFETIME = config('JWT_REFRESH_TOKEN_LIFETIME', default=604800, cast=int)  # 7天
@@ -477,6 +477,9 @@ ALLOWED_FILE_TYPES = config('ALLOWED_FILE_TYPES', default='image/jpeg,image/png,
 SECURITY_ALERT_EMAILS = config('SECURITY_ALERT_EMAILS', default='', cast=lambda v: v.split(',') if v else [])
 SLACK_WEBHOOK_URL = config('SLACK_WEBHOOK_URL', default='')
 SECURITY_WEBHOOK_URL = config('SECURITY_WEBHOOK_URL', default='')
+
+# 构建环境配置
+BUILD_ENV = config('BUILD_ENV', default='development')
 
 # Sentry错误监控 (可选)
 SENTRY_DSN = config('SENTRY_DSN', default='')

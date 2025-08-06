@@ -267,7 +267,7 @@ class User(AbstractBaseUser, PermissionsMixin, AuditMixin, SoftDeleteMixin, RowL
             'phone_verified': self.phone_verified,
             'two_factor_enabled': self.two_factor_enabled,
             'account_locked': self.is_account_locked(),
-            'password_age_days': (timezone.now() - (self.password_changed_at or self.date_joined)).days,
+            'password_age_days': (timezone.now() - (self.password_changed_at or self.created_at)).days,
             'failed_login_attempts': self.failed_login_attempts,
             'last_login_ago': (timezone.now() - self.last_login).days if self.last_login else None,
         }
