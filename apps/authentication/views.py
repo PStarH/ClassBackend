@@ -116,21 +116,10 @@ class UserLogoutView(APIView):
             401: OpenApiResponse(description="未授权")
         }
     )
+    @user_operation_handler("登出")
     def post(self, request):
         """用户登出"""
-        try:
-            return Response({
-                'success': True,
-                'message': '登出成功'
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"用户登出失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '登出失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+        return StandardResponse.success(message='登出成功')
 
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -161,24 +150,13 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
             401: OpenApiResponse(description="未授权")
         }
     )
+    @user_operation_handler("信息获取")
     def get(self, request, *args, **kwargs):
         """获取用户信息"""
-        try:
-            user = self.get_object()
-            serializer = self.get_serializer(user)
-            
-            return Response({
-                'success': True,
-                'data': serializer.data
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"获取用户信息失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '获取用户信息失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+        user = self.get_object()
+        serializer = self.get_serializer(user)
+        
+        return StandardResponse.success(data=serializer.data)
     
     @extend_schema(
         summary="更新用户信息",
@@ -259,33 +237,24 @@ class PasswordChangeView(APIView):
             400: OpenApiResponse(description="密码修改失败")
         }
     )
+    @user_operation_handler("密码修改")
     def post(self, request):
         """修改密码"""
-        try:
-            serializer = PasswordChangeSerializer(
-                data=request.data,
-                context={'request': request}
-            )
-            serializer.is_valid(raise_exception=True)
-            
-            AuthenticationService.change_password(
-                request.user,
-                serializer.validated_data['old_password'],
-                serializer.validated_data['new_password']
-            )
-            
-            return Response({
-                'success': True,
-                'message': '密码修改成功，请重新登录'
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"密码修改失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '密码修改失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+        serializer = PasswordChangeSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        
+        AuthenticationService.change_password(
+            request.user,
+            serializer.validated_data['old_password'],
+            serializer.validated_data['new_password']
+        )
+        
+        return StandardResponse.success(
+            message='密码修改成功，请重新登录'
+        )
 
 
 
@@ -304,31 +273,20 @@ class UserStatsView(APIView):
             200: OpenApiResponse(description="获取成功")
         }
     )
+    @user_operation_handler("统计信息获取")
     def get(self, request):
         """获取用户统计信息"""
-        try:
-            # Simple user stats implementation
-            stats = {
-                'user_uuid': str(request.user.uuid),
-                'username': request.user.username,
-                'email': request.user.email,
-                'is_active': request.user.is_active,
-                'date_joined': request.user.date_joined,
-                'last_login': request.user.last_login
-            }
-            
-            return Response({
-                'success': True,
-                'data': stats
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"获取用户统计信息失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '获取用户统计信息失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # Simple user stats implementation
+        stats = {
+            'user_uuid': str(request.user.uuid),
+            'username': request.user.username,
+            'email': request.user.email,
+            'is_active': request.user.is_active,
+            'date_joined': request.user.date_joined,
+            'last_login': request.user.last_login
+        }
+        
+        return StandardResponse.success(data=stats)
 
 
 class UserSettingsView(APIView):
@@ -455,44 +413,33 @@ class UserSettingsSkillsView(APIView):
             400: OpenApiResponse(description="添加失败")
         }
     )
+    @user_operation_handler("技能添加")
     def post(self, request):
         """添加技能"""
+        skill = request.data.get('skill', '').strip()
+        if not skill:
+            return StandardResponse.validation_error(
+                message='技能名称不能为空'
+            )
+        
         try:
-            skill = request.data.get('skill', '').strip()
-            if not skill:
-                return Response({
-                    'success': False,
-                    'message': '技能名称不能为空'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
             settings = UserSettings.objects.get(user_uuid=request.user)
-            
-            if skill in settings.skills:
-                return Response({
-                    'success': False,
-                    'message': '技能已存在'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            settings.add_skill(skill)
-            
-            return Response({
-                'success': True,
-                'message': '技能添加成功',
-                'data': {'skills': settings.skills}
-            }, status=status.HTTP_200_OK)
-            
         except UserSettings.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': '用户设置不存在'
-            }, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error(f"添加技能失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '添加技能失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return StandardResponse.not_found_error(
+                message='用户设置不存在'
+            )
+        
+        if skill in settings.skills:
+            return StandardResponse.validation_error(
+                message='技能已存在'
+            )
+        
+        settings.add_skill(skill)
+        
+        return StandardResponse.success(
+            message='技能添加成功',
+            data={'skills': settings.skills}
+        )
     
     @extend_schema(
         summary="删除用户技能",
@@ -503,41 +450,30 @@ class UserSettingsSkillsView(APIView):
             400: OpenApiResponse(description="删除失败")
         }
     )
+    @user_operation_handler("技能删除")
     def delete(self, request):
         """删除技能"""
+        skill = request.data.get('skill', '').strip()
+        if not skill:
+            return StandardResponse.validation_error(
+                message='技能名称不能为空'
+            )
+        
         try:
-            skill = request.data.get('skill', '').strip()
-            if not skill:
-                return Response({
-                    'success': False,
-                    'message': '技能名称不能为空'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
             settings = UserSettings.objects.get(user_uuid=request.user)
-            
-            if skill not in settings.skills:
-                return Response({
-                    'success': False,
-                    'message': '技能不存在'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            settings.remove_skill(skill)
-            
-            return Response({
-                'success': True,
-                'message': '技能删除成功',
-                'data': {'skills': settings.skills}
-            }, status=status.HTTP_200_OK)
-            
         except UserSettings.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': '用户设置不存在'
-            }, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error(f"删除技能失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '删除技能失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return StandardResponse.not_found_error(
+                message='用户设置不存在'
+            )
+        
+        if skill not in settings.skills:
+            return StandardResponse.validation_error(
+                message='技能不存在'
+            )
+        
+        settings.remove_skill(skill)
+        
+        return StandardResponse.success(
+            message='技能删除成功',
+            data={'skills': settings.skills}
+        )
