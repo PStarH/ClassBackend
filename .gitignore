@@ -1,9 +1,35 @@
-# Python cache files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Environment files
 .env
+.env.local
+.env.development
+.env.production
+.env.test
 
 # Django specific
 *.log
@@ -11,15 +37,98 @@ __pycache__/
 *.pyc
 *.pyo
 *.sqlite3
+db.sqlite3
+db.sqlite3-journal
+local_settings.py
+media/
+staticfiles/
+static_collected/
 
-# Setting specific
-DjangoRestApisPostgreSQL/settings.py
-
-# VSCode specific
-.vscode/
-
-# macOS specific
-.DS_Store
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
 
 # Virtual environment
 venv/
+env/
+ENV/
+.venv/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude AI and other AI assistant files
+.claude*
+claude-*
+.cursor*
+cursor-*
+.anthropic*
+anthropic-*
+.openai*
+openai-*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# LangChain / AI specific
+vector_store/
+embeddings_cache/
+*.pkl
+*.pickle
+
+# Redis dump
+dump.rdb
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+*.bak
+*.backup
+
+# Log files
+logs/
+
+# Migration files (keep structure, ignore data if needed)
+# */migrations/*.py
+# !*/migrations/__init__.py
+
+# Secret files
+secrets.json
+*.key
+*.pem
+*.crt
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+
+# PyCharm
+.idea/
+
+# Setting specific (legacy)
+DjangoRestApisPostgreSQL/settings.py
