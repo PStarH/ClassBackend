@@ -10,6 +10,8 @@ from rest_framework.views import APIView
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 
+from core.utils.api_response import api_error_handler, StandardResponse, ApiResponsePatterns, user_operation_handler
+
 from .models import User, UserSettings
 from .serializers import (
     UserRegistrationSerializer,
@@ -46,32 +48,23 @@ class UserRegistrationView(generics.CreateAPIView):
             400: OpenApiResponse(description="注册失败，参数错误")
         }
     )
+    @user_operation_handler("注册")
     def post(self, request, *args, **kwargs):
         """用户注册"""
-        try:
-            serializer = self.get_serializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            
-            user = AuthenticationService.create_user(
-                email=serializer.validated_data['email'],
-                username=serializer.validated_data['username'],
-                password=serializer.validated_data['password']
-            )
-            
-            response_serializer = UserSerializer(user)
-            return Response({
-                'success': True,
-                'message': '注册成功',
-                'data': response_serializer.data
-            }, status=status.HTTP_201_CREATED)
-            
-        except Exception as e:
-            logger.error(f"用户注册失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '注册失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user = AuthenticationService.create_user(
+            email=serializer.validated_data['email'],
+            username=serializer.validated_data['username'],
+            password=serializer.validated_data['password']
+        )
+        
+        response_serializer = UserSerializer(user)
+        return ApiResponsePatterns.created_response(
+            data=response_serializer.data,
+            resource_name="用户账号"
+        )
 
 
 class UserLoginView(APIView):
@@ -91,31 +84,22 @@ class UserLoginView(APIView):
             401: OpenApiResponse(description="登录失败")
         }
     )
+    @user_operation_handler("登录")
     def post(self, request):
         """用户登录"""
-        try:
-            serializer = UserLoginSerializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            
-            user = serializer.validated_data['user']
-            
-            response_data = {
-                'user': UserSerializer(user).data
-            }
-            
-            return Response({
-                'success': True,
-                'message': '登录成功',
-                'data': response_data
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"用户登录失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '登录失败',
-                'error': str(e)
-            }, status=status.HTTP_401_UNAUTHORIZED)
+        serializer = UserLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user = serializer.validated_data['user']
+        
+        response_data = {
+            'user': UserSerializer(user).data
+        }
+        
+        return StandardResponse.success(
+            data=response_data,
+            message='登录成功'
+        )
 
 
 class UserLogoutView(APIView):
@@ -364,29 +348,18 @@ class UserSettingsView(APIView):
             404: OpenApiResponse(description="用户设置不存在")
         }
     )
+    @user_operation_handler("设置获取")
     def get(self, request):
         """获取用户设置"""
         try:
             settings = UserSettings.objects.get(user_uuid=request.user)
-            serializer = UserSettingsSerializer(settings)
-            
-            return Response({
-                'success': True,
-                'data': serializer.data
-            }, status=status.HTTP_200_OK)
-            
         except UserSettings.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': '用户设置不存在，请先创建用户设置'
-            }, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error(f"获取用户设置失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '获取用户设置失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return StandardResponse.not_found_error(
+                message="用户设置不存在，请先创建用户设置"
+            )
+        
+        serializer = UserSettingsSerializer(settings)
+        return StandardResponse.success(data=serializer.data)
     
     @extend_schema(
         summary="创建用户设置",
@@ -401,45 +374,30 @@ class UserSettingsView(APIView):
             409: OpenApiResponse(description="用户设置已存在")
         }
     )
+    @user_operation_handler("设置创建")
     def post(self, request):
         """创建用户设置"""
-        try:
-            # 检查用户是否已有设置
-            if UserSettings.objects.filter(user_uuid=request.user).exists():
-                return Response({
-                    'success': False,
-                    'message': '用户设置已存在，请使用PUT方法更新'
-                }, status=status.HTTP_409_CONFLICT)
-            
-            serializer = UserSettingsCreateSerializer(
-                data=request.data,
-                context={'request': request}
+        # 检查用户是否已有设置
+        if UserSettings.objects.filter(user_uuid=request.user).exists():
+            return StandardResponse.error(
+                message='用户设置已存在，请使用PUT方法更新',
+                status_code=status.HTTP_409_CONFLICT
             )
-            
-            if serializer.is_valid():
-                settings = serializer.save()
-                response_serializer = UserSettingsSerializer(settings)
-                
-                logger.info(f"用户 {request.user.email} 创建设置成功")
-                return Response({
-                    'success': True,
-                    'message': '用户设置创建成功',
-                    'data': response_serializer.data
-                }, status=status.HTTP_201_CREATED)
-            
-            return Response({
-                'success': False,
-                'message': '创建用户设置失败',
-                'errors': serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-            
-        except Exception as e:
-            logger.error(f"创建用户设置失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '创建用户设置失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = UserSettingsCreateSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        
+        settings = serializer.save()
+        response_serializer = UserSettingsSerializer(settings)
+        
+        logger.info(f"用户 {request.user.email} 创建设置成功")
+        return ApiResponsePatterns.created_response(
+            data=response_serializer.data,
+            resource_name="用户设置"
+        )
     
     @extend_schema(
         summary="更新用户设置",
@@ -454,46 +412,32 @@ class UserSettingsView(APIView):
             404: OpenApiResponse(description="用户设置不存在")
         }
     )
+    @user_operation_handler("设置更新")
     def put(self, request):
         """更新用户设置"""
         try:
             settings = UserSettings.objects.get(user_uuid=request.user)
-            serializer = UserSettingsUpdateSerializer(
-                settings,
-                data=request.data,
-                partial=True,
-                context={'request': request}
-            )
-            
-            if serializer.is_valid():
-                settings = serializer.save()
-                response_serializer = UserSettingsSerializer(settings)
-                
-                logger.info(f"用户 {request.user.email} 更新设置成功")
-                return Response({
-                    'success': True,
-                    'message': '用户设置更新成功',
-                    'data': response_serializer.data
-                }, status=status.HTTP_200_OK)
-            
-            return Response({
-                'success': False,
-                'message': '更新用户设置失败',
-                'errors': serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-            
         except UserSettings.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': '用户设置不存在，请先创建用户设置'
-            }, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error(f"更新用户设置失败: {str(e)}")
-            return Response({
-                'success': False,
-                'message': '更新用户设置失败',
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return StandardResponse.not_found_error(
+                message="用户设置不存在，请先创建用户设置"
+            )
+        
+        serializer = UserSettingsUpdateSerializer(
+            settings,
+            data=request.data,
+            partial=True,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        
+        settings = serializer.save()
+        response_serializer = UserSettingsSerializer(settings)
+        
+        logger.info(f"用户 {request.user.email} 更新设置成功")
+        return ApiResponsePatterns.updated_response(
+            data=response_serializer.data,
+            resource_name="用户设置"
+        )
 
 
 class UserSettingsSkillsView(APIView):
