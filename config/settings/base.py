@@ -30,8 +30,8 @@ THIRD_PARTY_APPS = [
     'rest_framework.authtoken',
     'corsheaders',
     'drf_spectacular',
-    'django_celery_beat',
-    'django_celery_results',
+    # 'django_celery_beat',        # Temporarily disabled for basic setup
+    # 'django_celery_results',     # Temporarily disabled for basic setup
 ]
 
 LOCAL_APPS = [
@@ -142,14 +142,14 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Django REST Framework 配置 - 增强版
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'apps.authentication.enhanced_jwt.EnhancedJWTAuthentication',
-        'apps.authentication.authentication.TokenAuthentication',
+        # 'apps.authentication.enhanced_jwt.EnhancedJWTAuthentication',  # Temporarily disabled
+        'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'core.performance.query_optimization.CursorBasedPagination',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',  # Using simple pagination
     'PAGE_SIZE': 20,
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
@@ -161,7 +161,7 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_FILTER_BACKENDS': [
-        'django_filters.rest_framework.DjangoFilterBackend',
+        # 'django_filters.rest_framework.DjangoFilterBackend',  # Temporarily disabled
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
