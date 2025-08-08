@@ -453,87 +453,57 @@ class MemoryService:
             {"output": ai_output}
         )
     
-    def get_conversation_history(self, session_id: str) -> List[Dict[str, str]]:
-        """获取对话历史记录"""
+    def get_conversation_history(self, session_id: str, limit: int | None = None, include_summary: bool = False) -> List[Dict[str, str]]:
+        """获取对话历史记录 (支持限制数量 & 可选摘要)
+        :param session_id: 会话ID
+        :param limit: 限制返回最近N条消息
+        :param include_summary: 是否附加摘要内容(若可用)
+        """
         try:
             memory = self.get_conversation_memory(session_id)
             if hasattr(memory, 'messages'):
-                return memory.messages
+                msgs = memory.messages
+                if limit is not None:
+                    msgs = msgs[-limit:]
+                if include_summary:
+                    try:
+                        summary_memory = self.get_summary_memory(session_id)
+                        return {
+                            "messages": msgs,
+                            "summary": getattr(summary_memory, 'buffer', '')
+                        }
+                    except Exception:
+                        return {"messages": msgs, "summary": ""}
+                return msgs
             return []
         except Exception as e:
             print(f"Warning: Failed to get conversation history: {e}")
             return []
-    
-    def get_conversation_memory(self, session_id: str):
-        """获取对话记忆对象"""
-        memory = self.conversation_memories.get(session_id)
-        if memory is None:
-            memory = ModernConversationMemory(memory_key="chat_history", return_messages=True)
-            self.conversation_memories.put(session_id, memory)
-        return memory
-    
-    def get_summary_memory(self, session_id: str):
-        """获取摘要记忆对象"""
-        memory = self.summary_memories.get(session_id)
-        if memory is None:
-            memory = ModernSummaryMemory(llm=self.llm, memory_key="chat_summary", return_messages=True)
-            self.summary_memories.put(session_id, memory)
-        return memory
-    
-    def update_conversation(self, session_id: str, user_input: str, ai_output: str):
-        """更新对话记忆"""
-        self._update_conversation_sync(session_id, user_input, ai_output)
-    
-    def get_conversation_context(self, session_id: str) -> str:
-        """获取对话上下文"""
-        try:
-            summary_memory = self.get_summary_memory(session_id)
-            return summary_memory.buffer
-        except Exception as e:
-            print(f"Warning: Failed to get conversation context: {e}")
-            return ""
-    
-    async def get_conversation_context_async(self, session_id: str) -> str:
-        """异步获取对话上下文"""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, 
-            self.get_conversation_context, 
-            session_id
-        )
-    
-    def clear_session(self, session_id: str):
-        """清除会话数据"""
-        self.conversation_memories.remove(session_id)
-        self.summary_memories.remove(session_id)
-        self.plan_states.remove(session_id)
-    
-    async def clear_session_async(self, session_id: str):
-        """异步清除会话数据"""
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, self.clear_session, session_id)
-    
-    def get_memory_stats(self) -> Dict[str, Any]:
-        """获取内存使用统计"""
-        return {
-            "conversation_memories": self.conversation_memories.size(),
-            "summary_memories": self.summary_memories.size(),
-            "plan_states": self.plan_states.size(),
-            "total_items": (self.conversation_memories.size() + 
-                          self.summary_memories.size() + 
-                          self.plan_states.size()),
-            "warning_threshold": self._memory_warning_threshold
-        }
-    
-    def force_cleanup(self) -> Dict[str, int]:
-        """强制清理过期项"""
-        stats = {
-            "conversation_cleared": self.conversation_memories.clear_expired(),
-            "summary_cleared": self.summary_memories.clear_expired(),
-            "plan_cleared": self.plan_states.clear_expired()
-        }
-        stats["total_cleared"] = sum(stats.values())
-        return stats
+
+    # 新增: 提供压缩形式的历史, 用于上下文工程 (限制字符数/智能抽取)
+    def get_compact_history(self, session_id: str, max_chars: int = 1200) -> str:
+        """返回压缩后的关键对话片段 (启发式抽取 + 截断)"""
+        data = self.get_conversation_history(session_id, include_summary=True)
+        if isinstance(data, dict):
+            messages = data.get("messages", [])
+            summary = data.get("summary", "")
+        else:
+            messages = data
+            summary = ""
+        # 选取最近的用户/AI pair, 抽取问题/解释要点
+        pairs = []
+        for m in messages[-30:]:
+            content = m.get('input') or m.get('output') or ''
+            role = 'U' if 'input' in m else 'A'
+            if not content.strip():
+                continue
+            # 只抽取前 160 字
+            snippet = content.strip().replace('\n', ' ')[:160]
+            pairs.append(f"{role}:{snippet}")
+        compact = ("SUMMARY:" + summary[:300] + " | " if summary else "") + " || ".join(pairs)
+        if len(compact) > max_chars:
+            compact = compact[-max_chars:]
+        return compact
 
 
 # Service instances will be created on demand
